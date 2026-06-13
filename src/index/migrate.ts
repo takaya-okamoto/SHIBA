@@ -20,7 +20,7 @@ export async function migrate(): Promise<void> {
   // statements (poc/tidb LEARNINGS). Inline trailing `-- ...` comments are valid SQL, kept.
   const statements = sql
     .split("\n")
-    .filter((line) => !line.trim().startsWith("--"))
+    .map((line) => line.replace(/--.*$/, "")) // strip whole-line AND inline comments (a `;` inside a comment must not split a statement; no `--` appears in our string literals)
     .join("\n")
     .split(";")
     .map((s) => s.trim())
