@@ -88,6 +88,21 @@
 - **検証フロー確定**: `terraform fmt` だけでは不十分。**`init` → `validate`(プロバイダ実スキーマで参照/属性/型を検証・資格情報不要)→ `terraform test`(mock_provider で plan時ロジック)**。aws 6.50.0 / tidbcloud 0.4.10 で validate 通過・test 3件 pass(Bedrock count-gate / SSHのみ / provider validation)。`.terraform.lock.hcl` はコミットする(.gitignoreから除外)。
 - **未検証**: 実 `plan`/`apply`(要 AWS+TiDB 資格情報)= region_id 妥当性・無料枠 provisioning・IMDS Bedrock チェーンは実環境でのみ確認可。
 
+### 2026-06-13 [AWS/deploy] ★keyless Bedrock は Lightsail + 宣言的Terraform では作れない(apply で IAM 拒否)
+- **症状**: `terraform apply` で `aws_iam_role.bedrock` が `MalformedPolicyDocument: Invalid principal: arn:aws:sts::ACCT:assumed-role/AmazonLightsailInstance/*`。
+- **原因**: ① assumed-role principal に**ワイルドカード `*` は不可** ② `AmazonLightsailInstance` は**単体IAMロールとして存在しない**(`aws iam get-role`=NoSuchEntity)。これはSTSセッション名で、trust できるのは `arn:aws:sts::ACCT:assumed-role/AmazonLightsailInstance/<instance-id>`(**具体的 instance-id**=作成後にしか分からない)。実際この口座には過去 blueprint の `LightsailRoleFor-i-090b2dfe...` が残存。
+- **構造的結論**: keyless Bedrock は **OpenClaw blueprint方式**(インスタンス作成→IMDSで instance-id 取得→その id 専用ロールを CloudShell スクリプトで作成)前提。**平の Ubuntu Lightsail + 宣言的 Terraform では成立しない**(chicken-egg + principal 検証 + そもそも平箱が IMDS creds を出すか不明)。`#3/#4` の配線は blueprint 前提なら動くが、素の箱では不可。
+- **`terraform test`(mock)が見逃した理由**: mock_provider は IAMポリシーの**意味検証をしない** → 作成testは通ったが実IAMは拒否。**plan/test では IAM principal 妥当性は分からない**(実apply or policy simulator が要る)。
+- **決定**: Lightsail デプロイは **`model_provider=anthropic`(APIキー)** を採用(=ずっと「確実な道」と言ってきた通り)。Bedrock化は将来 OpenClaw blueprint をベースイメージにする等の別アプローチ。
+- **state**: TiDBクラスタ + key_pair は作成成功・state 記録済み(再applyで重複しない)。失敗した IAMロール/instance は未作成。TiDB の "inconsistent result"(auto_scaling=null→{0,0})は provider v0.4.10 のバグ → `lifecycle { ignore_changes = [auto_scaling] }` で抑止。
+
+### 2026-06-13 [AWS/deploy] ★★keyless Bedrock は平の Lightsail 箱では原理的に不可能(実機で確定)
+- 手動で role を作り trust を正しい principal に直しても **`AccessDenied: ...AmazonLightsailInstanceRole/i-... is not authorized to perform sts:AssumeRole on ...shiba-bedrock`**。
+- **根因**: 箱の IMDS identity は AWS の口座 `437521954154` の `AmazonLightsailInstanceRole`。クロスアカウント AssumeRole は**相手側(AWS)の identity ポリシー許可も必須**だが、それは顧客が付与できない。OpenClaw blueprint 箱だけが特別連携(annotation `DELEGATE_USER`、role名も `AmazonLightsailInstance`)で例外的に可能。
+- **IMDSスパイクの落とし穴**: `iam/security-credentials/` は role 名を**返す**(=一見chainable)が、その identity は**顧客ロールを assume できない**。「creds が見える」≠「assume できる」。**invoke/assume を実際に叩くまで分からない**。
+- **結論(確定)**: 平の Ubuntu Lightsail で **keyless Bedrock(role-chaining)は不可**。Bedrock を使うなら **IAMユーザのアクセスキーを箱に置く**(keyless ではないが機能・AWS課金一本化は維持)か、Anthropic APIキー。OpenClaw blueprint をベースにする手もあるが大改修。
+- 作った `shiba-bedrock` ロールは無効(削除可)。`manage_bedrock_role=false` のまま。
+
 ### 2026-06-13 [Telegram] BotFather に Terraform は無い
 - **分かったこと**: bot 作成・token 取得は対話式の BotFather のみ。IaC 化不可。
 - **決定**: token は `apply` 前の手動前提条件。`terraform.tfvars` の入力にする。「完全ワンコマンド」にはならない正直な制約。

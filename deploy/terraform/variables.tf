@@ -49,6 +49,25 @@ variable "tidb_database" {
   default     = "shiba"
 }
 
+# The cluster is managed outside Terraform (see main.tf). Pass its connection details:
+variable "tidb_host" {
+  description = "TiDB cluster host (Connect dialog), e.g. gateway01.ap-northeast-1.prod.aws.tidbcloud.com."
+  type        = string
+  default     = ""
+}
+
+variable "tidb_user" {
+  description = "TiDB SQL user: <user_prefix>.root."
+  type        = string
+  default     = ""
+}
+
+variable "tidb_port" {
+  description = "TiDB port."
+  type        = number
+  default     = 4000
+}
+
 # ---------------------------------------------------------------------------
 # Access
 # ---------------------------------------------------------------------------
@@ -118,6 +137,12 @@ variable "anthropic_api_key" {
   type        = string
   sensitive   = true
   default     = ""
+}
+
+variable "manage_bedrock_role" {
+  description = "Whether Terraform creates the Bedrock IAM role. Set FALSE for Lightsail (the role needs the instance-id-specific trust policy, created manually post-instance — see LEARNINGS). Keeps model_provider=bedrock."
+  type        = bool
+  default     = true
 }
 
 variable "bedrock_response_model" {

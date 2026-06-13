@@ -1,11 +1,13 @@
 #!/bin/bash
 # Rendered by Terraform templatefile(): the named placeholders below are substituted at plan time.
 # Bash uses $(...) and $VAR (no braces) so Terraform leaves them alone; literal $${ would escape.
-set -euo pipefail
+set -eu # Lightsail runs user_data under /bin/sh (dash) — NO bash-isms (no `pipefail`/`[[ ]]`/arrays)
 exec > /var/log/shiba-bootstrap.log 2>&1
 
 # --- Docker Engine + compose plugin (official repo) ---
 export DEBIAN_FRONTEND=noninteractive
+# Ubuntu first-boot unattended-upgrades holds the apt lock; WAIT for it instead of failing.
+echo 'DPkg::Lock::Timeout "600";' > /etc/apt/apt.conf.d/99lock-timeout
 apt-get update -y
 apt-get install -y ca-certificates curl git
 install -m 0755 -d /etc/apt/keyrings
