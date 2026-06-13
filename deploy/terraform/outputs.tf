@@ -9,20 +9,12 @@ output "ssh_command" {
 }
 
 output "tidb_host" {
-  value = tidbcloud_serverless_cluster.shiba.endpoints.public.host
-}
-
-output "tidb_port" {
-  value = tidbcloud_serverless_cluster.shiba.endpoints.public.port
+  value = var.tidb_host
 }
 
 output "tidb_user" {
-  description = "SQL user. Serverless user is '<user_prefix>.root'."
-  value       = "${tidbcloud_serverless_cluster.shiba.user_prefix}.root"
-}
-
-output "tidb_cluster_id" {
-  value = tidbcloud_serverless_cluster.shiba.cluster_id
+  description = "SQL user (<user_prefix>.root). Cluster is managed outside TF."
+  value       = var.tidb_user
 }
 
 output "bedrock_role_arn" {

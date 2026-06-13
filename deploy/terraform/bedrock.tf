@@ -14,7 +14,7 @@
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role" "bedrock" {
-  count = var.model_provider == "bedrock" ? 1 : 0
+  count = var.model_provider == "bedrock" && var.manage_bedrock_role ? 1 : 0
   name  = "${var.instance_name}-bedrock"
 
   assume_role_policy = jsonencode({
@@ -32,7 +32,7 @@ resource "aws_iam_role" "bedrock" {
 }
 
 resource "aws_iam_role_policy" "bedrock" {
-  count = var.model_provider == "bedrock" ? 1 : 0
+  count = var.model_provider == "bedrock" && var.manage_bedrock_role ? 1 : 0
   name  = "bedrock-invoke"
   role  = aws_iam_role.bedrock[0].id
 

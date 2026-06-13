@@ -3,23 +3,11 @@
 # Free tier = simply OMIT `spending_limit`. Default free quota:
 #   5 GiB row + 5 GiB columnar + 50M RU/month, max 5 free clusters per org.
 # ===========================================================================
-resource "tidbcloud_serverless_cluster" "shiba" {
-  display_name = var.tidb_cluster_name
-
-  region = {
-    name = "regions/${var.tidb_region_id}"
-  }
-
-  # Uncomment to allow paid auto-scaling beyond the free quota:
-  # spending_limit = {
-  #   monthly = 1000 # USD cents
-  # }
-
-  lifecycle {
-    # The index is rebuildable (`reindex --all`), but guard against accidental teardown.
-    prevent_destroy = true
-  }
-}
+# NOTE: the cluster is managed OUTSIDE Terraform now. It was created once via the tidbcloud
+# provider, then `terraform state rm`'d, because provider v0.4.10 churns/errors when updating an
+# existing cluster (auto_scaling "inconsistent result"; "can't set both spending limit and
+# capacity"). The ACTIVE cluster's connection details are passed in via vars (tidb_host/tidb_user).
+# See OSS/shiba/docs/LEARNINGS.md. To re-create from scratch, re-add this resource on a fresh org.
 
 # ===========================================================================
 # Lightsail — resident 24/7 VPS = SHIBA app + source of truth (Markdown+git).
@@ -49,9 +37,9 @@ resource "aws_lightsail_instance" "shiba" {
     telegram_bot_token     = var.telegram_bot_token
     gemini_api_key         = var.gemini_api_key
     memory_git_remote      = var.memory_git_remote
-    tidb_host              = tidbcloud_serverless_cluster.shiba.endpoints.public.host
-    tidb_port              = tidbcloud_serverless_cluster.shiba.endpoints.public.port
-    tidb_user              = "${tidbcloud_serverless_cluster.shiba.user_prefix}.root"
+    tidb_host              = var.tidb_host
+    tidb_port              = var.tidb_port
+    tidb_user              = var.tidb_user
     tidb_password          = var.tidb_password
     tidb_database          = var.tidb_database
   })
