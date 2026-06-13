@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS chunks (
 
 -- Structured facts (round-trip with the Markdown facts fence). The entity-route searches here.
 CREATE TABLE IF NOT EXISTS facts (
-  id            BIGINT PRIMARY KEY, -- app-assigned by reindex/extract (stable links; avoids AUTO_RANDOM > JS int)
+  id            BIGINT PRIMARY KEY, -- app-assigned by reindex/extract (stable links, avoids AUTO_RANDOM)
   claim         VARCHAR(500) NOT NULL,
   kind          ENUM('event','preference','commitment','belief','fact') NOT NULL DEFAULT 'fact',
   confidence    FLOAT,
