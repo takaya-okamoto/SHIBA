@@ -4,7 +4,8 @@
 # --- Access ---
 ssh_public_key = "ssh-ed25519 AAAA... you@host"   # contents of your *.pub
 admin_ssh_cidr = "203.0.113.4/32"                 # YOUR IP /32 (find: curl ifconfig.me)
-shiba_repo_url = "https://github.com/youruser/shiba.git"
+shiba_repo_url    = "https://github.com/takaya-okamoto/SHIBA.git"
+github_repo_token = "github_pat_..."   # fine-grained PAT, read-only Contents on SHIBA (private). Empty if public.
 
 # --- TiDB Cloud API key (console -> Organization Settings -> API Keys) ---
 tidb_api_public_key  = "..."
