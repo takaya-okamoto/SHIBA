@@ -1,0 +1,21 @@
+{
+  "name": "shiba-poc-tidb",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PoC: validate TiDB Cloud Starter (Tokyo) for SHIBA — auto-embed, FTS, and the entity-route filtered-ANN single query (the 101 '10x' bet).",
+  "scripts": {
+    "smoke": "tsx smoke.ts",
+    "schema": "tsx apply-schema.ts",
+    "seed": "tsx seed.ts",
+    "bench": "tsx bench.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mysql2": "^3.11.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}
