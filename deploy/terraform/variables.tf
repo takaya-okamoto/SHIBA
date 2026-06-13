@@ -65,7 +65,14 @@ variable "admin_ssh_cidr" {
 variable "shiba_repo_url" {
   description = "Git URL of the SHIBA app to clone and run on the instance."
   type        = string
-  default     = "https://github.com/youruser/shiba.git"
+  default     = "https://github.com/takaya-okamoto/SHIBA.git"
+}
+
+variable "github_repo_token" {
+  description = "GitHub PAT (fine-grained, read-only Contents on the SHIBA repo) to clone a PRIVATE repo on the box. Leave empty if the repo is public. NOTE: lands in tfstate + instance metadata."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 variable "memory_git_remote" {
@@ -126,9 +133,10 @@ variable "bedrock_extract_model" {
 }
 
 variable "gemini_api_key" {
-  description = "Google Gemini API key for TiDB auto-embedding (BYOK)."
+  description = "Google Gemini API key — ONLY if you switch embedding to Gemini (BYOK). Empty = use the free managed Titan model (default), no key needed."
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "tidb_password" {

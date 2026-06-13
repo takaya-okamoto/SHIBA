@@ -39,6 +39,7 @@ resource "aws_lightsail_instance" "shiba" {
   # Bootstrap: install Docker, clone SHIBA, render .env, start (if TiDB password is set).
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     repo_url               = var.shiba_repo_url
+    github_repo_token      = var.github_repo_token
     model_provider         = var.model_provider
     aws_region             = var.aws_region
     bedrock_role_arn       = join("", aws_iam_role.bedrock[*].arn) # "" when model_provider=anthropic (count 0)
