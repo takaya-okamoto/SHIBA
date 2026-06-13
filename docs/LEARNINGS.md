@@ -123,3 +123,27 @@
 
 ### 2026-06-13 [memory] facts fence 形式を確定(round-trip 可能・人間可読)
 - ` ```facts v1 ` ブロック内に `- [kind] claim @slug ^YYYY-MM-DD !untrusted`、`~~...~~`=superseded(忘却)。`parseFacts`⇄`serializeFactsBlock` が round-trip(テスト済)。`@slug`=entity(101の繋がりはここに人間が書ける)、`!untrusted`=source_trust(98 §3.5)。真実は Markdown、TiDB は派生。
+
+---
+
+## Deploy / 実デプロイ(2026-06-13 ライブ化)
+
+### 2026-06-13 [bedrock] keyless(IMDSロールチェーン)は素の Lightsail では不可能 → IAMユーザーキーに確定
+- **結論**: 素の Lightsail インスタンスの IMDS が返す呼び出し元は `AmazonLightsailInstanceRole`(AWSアカウント `437521954154` 所有)。自前ロールの trust にこれを書いても、**そのアカウントからの cross-account AssumeRole を当方は許可できない**(相手アカウントの設定権限が無い)ため AccessDenied で頓挫。「鍵レス」は EC2/ECS では成立するが Lightsail単体では×。
+- **採用**: **IAMユーザーのアクセスキー**を `.env`(`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`)で渡す(path A)。`AnthropicBedrock` は既定の資格情報チェーンで **env変数を最優先**で拾うので、`~/.aws` マウントが空でも動く(本番で確認: コンテナから `BEDROCK_REPLY: OK`)。`user_data` の `~/.aws/config`(role_arn)は使われない=無害。
+- **モデルid**: Claude 4.x は on-demand 非対応 → **inference profile 必須**。`apac.` は当該モデルで無効。`@aws-sdk/client-bedrock` の `ListInferenceProfiles` で実在を確認 → **`jp.anthropic.claude-sonnet-4-5-20250929-v1:0`**(東京)を採用。「推測せず env で渡す・listで実在確認」が鉄則。
+
+### 2026-06-13 [docker] pnpm 11 は「無視されたビルドスクリプト」を*エラー(exit 1)*にする → `packageManager` でpnpm固定
+- **罠**: 箱の corepack は最新 pnpm(11.6.0)を引く。`package.json` に `packageManager` 指定が無いと版が揺れる。pnpm 11 は `[ERR_PNPM_IGNORED_BUILDS]`(esbuild/@biomejs/biome の postinstall を承認していない)を**警告でなくエラー**にしてビルド失敗。pnpm 10 は同状況が警告(exit 0)。
+- **修正**: `"packageManager": "pnpm@10.15.0"`(ローカルと同版)を固定。これで 箱/手元の pnpm 挙動が一致。`minimumReleaseAge`(直近公開パッケージ拒否ポリシー)も併発したが、Dockerfile の `--config.minimumReleaseAge=0` + 10系では既定無効で解消。
+- **教訓**: corepack を使うなら `packageManager` を**必ず固定**。版差は「警告 vs エラー」のような非自明な挙動差を生む。
+
+### 2026-06-13 [migrate] schema 分割で「コメント内の `;`」が文を途中分割 → parse error
+- **罠**: `migrate.ts` は schema.sql を `;` で分割して逐次実行。facts の**インラインコメント** `-- ... (stable links; avoids ...)` に `;` が含まれており、そこで文が切れて `CREATE TABLE facts (...` が途中で千切れ→ `ER_PARSE_ERROR`。`chunks` だけ作られて以降が全滅(症状が「最初の1テーブルだけ存在」)。
+- **修正**: 分割前に**各行の `--` 以降(行コメント+インラインコメント両方)を除去**(`line.replace(/--.*$/, "")`)。自schemaの文字列リテラルに `--` は無いので安全。コメントの `;` 自体も除去(防御的)。
+- **教訓**: 素朴な `;` 分割は SQL コメント/文字列内の `;` に弱い。コメントを先に剥がす。バックグラウンド実行で出力が握れず原因究明が遅れた→**detached + ファイルログ + `SHOW TABLES` 直接確認**で確定。
+
+### 2026-06-13 [live] エンドツーエンド稼働確認
+- Lightsail `43.207.112.254`(4GB, ap-northeast-1)で `docker compose up -d`。**Telegram bot = `@MAME_SHIBA_BOT`**(long polling)。TiDB Starter(東京)に4テーブル+2 FTS を migrate 済。Bedrock(Sonnet 4.5 / 東京 inference profile)へコンテナから実呼び出し成功。
+- **オーナー登録コードは起動毎に再生成**(in-memory、未登録のまま再起動すると変わる)。登録後は `./data`(マウント volume)に永続するので再起動で再登録不要。
+- **次の宿題**: session終了時の `closeSession`(extract→facts追記→commit→reindex)の自動トリガ配線(Step 3c)。現状は recall+respond は動くが、会話からの自動メモリ書き込みは未配線。
