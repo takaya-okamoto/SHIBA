@@ -1,0 +1,10 @@
+# Terraform — never commit state (contains rendered secrets) or local vars.
+.terraform/
+# .terraform.lock.hcl IS committed (pins provider versions + hashes — Terraform best practice)
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+override.tf
+override.tf.json

@@ -1,0 +1,34 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+# Order matters: create the Telegram bot (BotFather) and the API keys BEFORE apply.
+
+# --- Access ---
+ssh_public_key = "ssh-ed25519 AAAA... you@host"   # contents of your *.pub
+admin_ssh_cidr = "203.0.113.4/32"                 # YOUR IP /32 (find: curl ifconfig.me)
+shiba_repo_url = "https://github.com/youruser/shiba.git"
+
+# --- TiDB Cloud API key (console -> Organization Settings -> API Keys) ---
+tidb_api_public_key  = "..."
+tidb_api_private_key = "..."
+
+# --- Model provider ---
+model_provider     = "bedrock"          # "bedrock" (keyless, option B) or "anthropic"
+anthropic_api_key  = ""                  # only when model_provider = "anthropic"
+# Bedrock model ids (region-specific inference profiles) — required when model_provider="bedrock".
+# Find the exact ids in the Bedrock console for your region/account (and submit the FTU form once).
+bedrock_response_model = "apac.anthropic.claude-sonnet-4-..."
+bedrock_extract_model  = "apac.anthropic.claude-haiku-..."
+
+# --- App secrets ---
+telegram_bot_token = "123456:ABC-..."   # from @BotFather
+gemini_api_key     = "AIza..."           # for TiDB auto-embedding (BYOK)
+
+# --- TiDB SQL password (Gotcha A) ---
+# Leave EMPTY on the first apply. After the cluster exists, reset the password in
+# the TiDB Cloud console, paste it here, and run `terraform apply` again.
+tidb_password = ""
+
+# --- Optional ---
+memory_git_remote = ""   # e.g. git@github.com:you/shiba-memory.git
+
+# --- Sizing (defaults are fine) ---
+# lightsail_bundle_id = "medium_3_0"   # 4GB. Use "small_3_0" for 2GB to save cost.

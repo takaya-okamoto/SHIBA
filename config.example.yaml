@@ -1,0 +1,12 @@
+# Behavior tuning (non-secret). Copy to config.yaml to override defaults.
+# Secrets live in .env, never here (docs/92 §3).
+
+embedding:
+  provider: tidb-auto                                  # tidb-auto | local
+  model: tidbcloud_free/amazon/titan-embed-text-v2     # prod: gemini/gemini-embedding-001
+  dimension: 1024                                      # must match the model
+
+search:
+  candidatesPerRoute: 40    # top-K pulled per route (vector / fts / entity) before fusion
+  rrfK: 60                  # RRF constant
+  limit: 20                 # final results after autocut
