@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Persistent allowlist (`FileAllowlist`, `./data/state/allowlist.json` on the mounted volume):
+  owner registration now survives restarts/redeploys; a one-time setup code is printed only on a
+  fresh install (nobody registered yet), and an empty code never registers anyone.
 - Prompt caching (1h TTL) + model-driven `memory_search` tool: the system prompt (persona +
   memory protocol) and tool definitions form a byte-stable cached prefix; recall is injected on
   the current user turn so `system` stays cacheable; the model may call `memory_search` to go

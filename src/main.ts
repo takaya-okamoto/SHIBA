@@ -8,7 +8,7 @@ import { getLlm } from "./llm/client.js";
 import { FsGitMemoryStore } from "./memory/store.js";
 import { search } from "./search/index.js";
 import { SessionManager } from "./session/manager.js";
-import { InMemoryAllowlist } from "./turn/allowlist.js";
+import { FileAllowlist } from "./turn/allowlist.js";
 import { TurnLoop } from "./turn/turn-loop.js";
 
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
@@ -16,12 +16,20 @@ const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 async function serve(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN required for `serve`");
-  const ownerCode = randomBytes(4).toString("hex");
-  console.log(`owner setup code: ${ownerCode}  (DM this once to the bot to register)`);
+  // Allowlist persists under ./data/state (mounted volume), so owner registration survives restarts.
+  // Only mint + print a setup code when nobody is registered yet (a fresh install).
+  const allowlist = new FileAllowlist();
+  let ownerCode = "";
+  if (await allowlist.hasAny()) {
+    console.log("owner already registered (allowlist persisted in ./data/state).");
+  } else {
+    ownerCode = randomBytes(4).toString("hex");
+    console.log(`owner setup code: ${ownerCode}  (DM this once to the bot to register)`);
+  }
   const turn = new TurnLoop({
     llm: getLlm(),
     search: (q) => search(q),
-    allowlist: new InMemoryAllowlist(), // TODO: TiDB st_allowlist (persist across restarts)
+    allowlist,
     store: new FsGitMemoryStore(),
     reindex: () => reindex({}),
     ownerCode,
