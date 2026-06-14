@@ -39,3 +39,11 @@ function crossedDailyReset(prev: number, now: number, hour: number): boolean {
   if (d.getTime() <= prev) d.setDate(d.getDate() + 1); // next occurrence of the reset hour after prev
   return d.getTime() <= now;
 }
+
+/** Local YYYY-MM-DD for `ms` — the daily-note filename a flushed session writes to (memory/<date>.md). */
+export function toLocalDate(ms: number): string {
+  const d = new Date(ms);
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
