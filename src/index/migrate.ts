@@ -8,7 +8,8 @@ import { config } from "../config.js";
  * Connects without a default DB first so it can create the database, then USE it.
  */
 export async function migrate(): Promise<void> {
-  const { TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE, TIDB_CA_PATH } = process.env;
+  const { TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE, TIDB_CA_PATH } =
+    process.env;
   if (!TIDB_HOST || !TIDB_USER || !TIDB_PASSWORD) throw new Error("Missing TIDB_* in .env");
   const db = TIDB_DATABASE ?? "shiba";
 
@@ -36,8 +37,8 @@ export async function migrate(): Promise<void> {
     ssl,
     multipleStatements: false,
   });
-  await conn.query("CREATE DATABASE IF NOT EXISTS `" + db + "`");
-  await conn.query("USE `" + db + "`");
+  await conn.query(`CREATE DATABASE IF NOT EXISTS \`${db}\``);
+  await conn.query(`USE \`${db}\``);
   console.log(`migrate: ${db} (embed ${config.embedding.model} @ ${config.embedding.dimension})`);
   for (const stmt of statements) {
     const head = stmt.replace(/\s+/g, " ").slice(0, 64);

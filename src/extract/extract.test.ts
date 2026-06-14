@@ -14,7 +14,13 @@ describe("parseExtractionOutput", () => {
   it("maps valid facts, drops empty/bad-kind, filters bad slugs", () => {
     const raw = {
       facts: [
-        { claim: "コーヒーはブラック", kind: "preference", entities: ["owner", "BAD SLUG"], valid_from: null, source_trust: "owner" },
+        {
+          claim: "コーヒーはブラック",
+          kind: "preference",
+          entities: ["owner", "BAD SLUG"],
+          valid_from: null,
+          source_trust: "owner",
+        },
         { claim: "", kind: "fact" },
         { claim: "x", kind: "bogus" },
         { claim: "会議は10日", kind: "event", entities: ["a-corp"], valid_from: "2026-06-10" },

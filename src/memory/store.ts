@@ -61,7 +61,8 @@ export class FsGitMemoryStore {
     try {
       await exec("git", ["-C", this.root, "add", "-A"]);
       await exec("git", ["-C", this.root, "commit", "-m", message]);
-      if (process.env.MEMORY_GIT_REMOTE) await exec("git", ["-C", this.root, "push"]).catch(() => {});
+      if (process.env.MEMORY_GIT_REMOTE)
+        await exec("git", ["-C", this.root, "push"]).catch(() => {});
     } catch {
       // not a repo / nothing staged — tolerate (skeleton)
     }

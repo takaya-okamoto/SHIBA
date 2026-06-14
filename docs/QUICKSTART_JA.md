@@ -1,8 +1,8 @@
 # SHIBA クイックスタート（初回セットアップ）
 
 ゼロから **Telegram で SHIBA と会話できる状態** までの手順。所要 30〜60 分。
-このドキュメントは「今回実際に本番稼働まで辿った手順」を再現可能な形にしたものです。
-途中で踏んだ落とし穴の詳細は [`LEARNINGS.md`](./LEARNINGS.md) の「Deploy / 実デプロイ」節を参照。
+このドキュメントは「実際に本番稼働まで辿った手順」を再現可能な形にしたものです。
+途中で踏みやすい落とし穴は末尾の「トラブルシュート」に併記しています。
 
 ## 構成（できあがるもの）
 
@@ -53,7 +53,7 @@
    - **Password**: 「Generate / Reset Password」で発行して控える
 3. TLS は公開 CA で通る（`TIDB_CA_PATH` は不要）
 
-> ⚠️ クラスタは **Terraform 管理外**（意図的に decouple、LEARNINGS 参照）。接続情報を後で `terraform.tfvars` / `.env` に渡します。
+> ⚠️ クラスタは **Terraform 管理外**（意図的に decouple）。接続情報を後で `terraform.tfvars` / `.env` に渡します。
 
 ---
 
@@ -74,7 +74,7 @@
   - 抽出（`bedrock_extract_model`）= haiku 系の `jp.` プロファイル（上記コマンドで実在 ID を確認して使う）
 
 ### 3-3. IAM ユーザー + アクセスキーを作る
-> ⚠️ **keyless（IMDS ロールチェーン）は素の Lightsail では不可能**と判明済み（LEARNINGS）。IAM ユーザーのアクセスキー方式を使う。
+> ⚠️ **keyless（IMDS ロールチェーン）は素の Lightsail では不可能**。IAM ユーザーのアクセスキー方式を使う。
 
 1. IAM → ユーザー作成 → ポリシー（最小権限）：
    ```json
@@ -112,9 +112,10 @@ github_repo_token = ""                              # public なら空
 
 # モデル（Bedrock / IAMユーザーキー方式）
 model_provider      = "bedrock"
-manage_bedrock_role = false                         # role 方式は使わない（keyless 不可のため）
 bedrock_response_model = "jp.anthropic.claude-sonnet-4-5-20250929-v1:0"
 bedrock_extract_model  = "jp.anthropic.claude-haiku-..."   # 3-2 で確認した実在 ID
+aws_access_key_id      = "AKIA..."                  # 3-3 の IAM ユーザーキー
+aws_secret_access_key  = "..."
 
 # Telegram
 telegram_bot_token = "123456:ABC-..."
@@ -139,17 +140,11 @@ terraform apply
 
 ---
 
-## 6. 箱で仕上げ（AWS キー投入 → ビルド → migrate）
-
-> ⚠️ AWS アクセスキーは tfvars 経路に無いので、**箱の `.env` に直接追記**します（`AnthropicBedrock` は env 変数を最優先で認証）。
+## 6. 箱で仕上げ（ビルド → migrate）
 
 ```bash
 ssh -4 -i ~/.ssh/id_ed25519 ubuntu@<箱のIP>
 cd /opt/shiba/app
-
-# .env に AWS キーを追記（3-3 の値）
-sudo sh -c 'printf "AWS_ACCESS_KEY_ID=...\nAWS_SECRET_ACCESS_KEY=...\n" >> .env'
-sudo chmod 600 .env
 
 # ビルド & 起動（pnpm は package.json で 10.15.0 に固定済み）
 sudo docker compose up -d --build
@@ -158,7 +153,7 @@ sudo docker compose up -d --build
 sudo docker compose run --rm app node dist/main.js migrate
 ```
 
-> 補足：`migrate` は TiFlash プロビジョニングで時間がかかることがあります。SSH 切断で途中 kill されないよう、長い場合は `nohup ... &` でデタッチして `SHOW TABLES` で完了確認すると確実（LEARNINGS 参照）。
+> 補足：`migrate` は TiFlash プロビジョニングで時間がかかることがあります。SSH 切断で途中 kill されないよう、長い場合は `nohup ... &` でデタッチして `SHOW TABLES` で完了確認すると確実です。
 
 ---
 
@@ -178,7 +173,7 @@ sudo docker compose logs app | grep "owner setup code"
 
 ---
 
-## 動作確認 / トラブルシュート
+## トラブルシュート
 
 ```bash
 sudo docker compose ps          # 稼働状態
@@ -193,7 +188,7 @@ sudo docker compose exec -T app node --input-type=module -e \
    console.log(r.content[0].text);'
 ```
 
-**よく踏む罠**（詳細は [`LEARNINGS.md`](./LEARNINGS.md)）
+**よく踏む罠**
 - **Docker ビルドが pnpm で失敗** → pnpm 11 は「未承認のビルドスクリプト」をエラー化。`package.json` の `packageManager: pnpm@10.15.0` 固定で解決済み。
 - **migrate で `chunks` だけしか作られない** → schema のコメント内 `;` で文が分断されていた問題。修正済み。
 - **Bedrock が AccessDenied** → keyless（IMDS）は素の Lightsail では不可。IAM ユーザーキーを `.env` に入れる。FTU フォーム未提出も疑う。

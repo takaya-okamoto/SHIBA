@@ -34,7 +34,7 @@ export function chunkMarkdown(md: string): Chunk[] {
     const h = line.match(/^#{1,6}\s+(.*)$/);
     if (h) {
       flush();
-      heading = h[1]!.trim();
+      heading = (h[1] ?? "").trim();
       continue;
     }
     if (t === "") {

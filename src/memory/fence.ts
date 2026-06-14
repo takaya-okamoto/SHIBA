@@ -65,14 +65,14 @@ export function parseFactLine(raw: string): FenceFact | null {
   const strike = s.match(/^~~(.*)~~$/);
   if (strike) {
     state = "superseded";
-    s = strike[1]!.trim();
+    s = (strike[1] ?? "").trim();
   }
 
   const km = s.match(/^\[(\w+)\]\s*(.*)$/);
   if (!km) return null;
   const kind = km[1] as FactKind;
   if (!KINDS.has(kind)) return null;
-  const claim = km[2]!.trim();
+  const claim = (km[2] ?? "").trim();
   if (!claim) return null;
 
   return { claim, kind, entities: [...new Set(entities)], validFrom, sourceTrust, state };

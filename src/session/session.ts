@@ -23,7 +23,11 @@ export const defaultPolicy: SessionPolicy = {
  * Close = earliest of: idle timeout, turn cap, or crossing the daily reset hour.
  * Closing fires the extraction flush (docs/91 §4).
  */
-export function shouldClose(s: SessionState, now: number, p: SessionPolicy = defaultPolicy): boolean {
+export function shouldClose(
+  s: SessionState,
+  now: number,
+  p: SessionPolicy = defaultPolicy,
+): boolean {
   if (now - s.lastMessageAt >= p.idleMs) return true;
   if (s.turnCount >= p.maxTurns) return true;
   return crossedDailyReset(s.lastMessageAt, now, p.dailyResetHour);

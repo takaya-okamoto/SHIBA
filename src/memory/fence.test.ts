@@ -25,7 +25,13 @@ describe("parseFactLine", () => {
 
 describe("parseFacts", () => {
   it("only reads inside ```facts blocks", () => {
-    const md = ["intro", "```facts v1", "- [preference] coffee @owner", "```", "- [event] ignored"].join("\n");
+    const md = [
+      "intro",
+      "```facts v1",
+      "- [preference] coffee @owner",
+      "```",
+      "- [event] ignored",
+    ].join("\n");
     const facts = parseFacts(md);
     expect(facts).toHaveLength(1);
     expect(facts[0]?.kind).toBe("preference");
@@ -35,8 +41,22 @@ describe("parseFacts", () => {
 describe("round-trip", () => {
   it("serialize -> parse is stable", () => {
     const facts: FenceFact[] = [
-      { claim: "コーヒーはブラック", kind: "preference", entities: ["owner"], validFrom: null, sourceTrust: "owner", state: "active" },
-      { claim: "以前はB社勤務", kind: "fact", entities: ["b-corp"], validFrom: "2024-01-01", sourceTrust: "untrusted", state: "superseded" },
+      {
+        claim: "コーヒーはブラック",
+        kind: "preference",
+        entities: ["owner"],
+        validFrom: null,
+        sourceTrust: "owner",
+        state: "active",
+      },
+      {
+        claim: "以前はB社勤務",
+        kind: "fact",
+        entities: ["b-corp"],
+        validFrom: "2024-01-01",
+        sourceTrust: "untrusted",
+        state: "superseded",
+      },
     ];
     expect(parseFacts(serializeFactsBlock(facts))).toEqual(facts);
   });

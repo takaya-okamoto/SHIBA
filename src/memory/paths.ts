@@ -13,7 +13,8 @@ export function isValidSlug(s: string): boolean {
  */
 export function safeJoin(root: string, rel: string): string {
   if (rel.includes("\0")) throw new Error("null byte in path");
-  if (isAbsolute(rel) || rel.startsWith("~")) throw new Error(`absolute/home path rejected: ${rel}`);
+  if (isAbsolute(rel) || rel.startsWith("~"))
+    throw new Error(`absolute/home path rejected: ${rel}`);
   const rootAbs = resolve(root);
   const resolved = resolve(rootAbs, normalize(rel));
   if (resolved !== rootAbs && !resolved.startsWith(rootAbs + sep)) {
