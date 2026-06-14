@@ -2,13 +2,13 @@ import { config } from "../config.js";
 import type { SearchHit, SearchOptions } from "../types.js";
 import { resolveEntities } from "./entity.js";
 import { type SearchProvider, TidbSearchProvider } from "./provider.js";
-import { type RankedList, autocut, demoteUntrusted, rrfFuse } from "./rrf.js";
+import { type RankedList, autocut, demoteUntrusted, recencyBoost, rrfFuse } from "./rrf.js";
 
 /**
  * Hybrid recall (docs/91 §2.3, 101 §7): text-route (vector + FTS) + entity-route, fused by RRF,
- * untrusted demoted (98 §3.5), then autocut. The entity-route uses the validated scale-safe
- * IN-subquery (provider). Stays at a handful of queries — no graph BFS, since connections are
- * materialized at write time.
+ * untrusted demoted (98 §3.5), recency-decayed (90 §3), then autocut. The entity-route uses the
+ * validated scale-safe IN-subquery (provider). Stays at a handful of queries — no graph BFS, since
+ * connections are materialized at write time.
  */
 export async function search(
   query: string,
@@ -35,7 +35,11 @@ export async function search(
   }
 
   let fused = rrfFuse(lists, config.search.rrfK);
-  // TODO (101 §7): recency / evergreen boost + graph-adjacency boost + cross-encoder rerank.
   fused = demoteUntrusted(fused);
+  // recency decay: dated facts (event/commitment) fade with age; evergreen kinds are exempt (90 §3).
+  if (config.search.decayEnabled) {
+    fused = recencyBoost(fused, Date.now(), config.search.recencyHalfLifeDays);
+  }
+  // TODO (101 §7): graph-adjacency boost + cross-encoder rerank.
   return autocut(fused, limit);
 }

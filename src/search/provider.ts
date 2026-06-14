@@ -1,13 +1,15 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { getPool } from "../index/db.js";
 import { type EmbeddingProvider, getEmbeddingProvider } from "../index/embed.js";
-import type { SourceTrust } from "../types.js";
+import type { FactKind, SourceTrust } from "../types.js";
 import { ftsLiteral } from "./fts.js";
 
 export interface RouteHit {
   id: string;
   claim: string;
   sourceTrust: SourceTrust;
+  kind?: FactKind; // set by toHits for fact routes; optional so test fakes can omit it
+  recordedAt?: string; // ISO; for recency decay (rrf.recencyBoost)
   distance?: number; // present for vector / entity routes (cosine; lower = closer)
 }
 
@@ -21,6 +23,8 @@ interface FactRow extends RowDataPacket {
   id: string;
   claim: string;
   source_trust: SourceTrust;
+  kind: FactKind;
+  recorded_at: Date | string | null;
   d: number | null;
 }
 
@@ -29,11 +33,13 @@ const toHits = (rows: FactRow[]): RouteHit[] =>
     id: r.id,
     claim: r.claim,
     sourceTrust: r.source_trust,
+    kind: r.kind,
+    recordedAt: r.recorded_at ? new Date(r.recorded_at).toISOString() : undefined,
     distance: r.d ?? undefined,
   }));
 
 /**
- * TiDB-backed routes (validated by poc/tidb on Tokyo Starter).
+ * TiDB-backed routes (validated by poc/tidb on Tokyo Starter). All routes query `facts`.
  * `SearchProvider` is the swap point for a LIKE fallback if FTS preview misbehaves (docs/91 §2.4-4).
  */
 export class TidbSearchProvider implements SearchProvider {
@@ -50,7 +56,7 @@ export class TidbSearchProvider implements SearchProvider {
     const dist = this.embed.distanceExpr("embedding");
     const p = this.embed.distanceParams(query);
     const [rows] = await this.pool.query<FactRow[]>(
-      `SELECT id, claim, source_trust, ${dist} AS d
+      `SELECT id, claim, source_trust, kind, recorded_at, ${dist} AS d
          FROM facts WHERE state = 'active'
          ORDER BY ${dist} LIMIT ?`,
       [...p, ...p, k],
@@ -62,7 +68,7 @@ export class TidbSearchProvider implements SearchProvider {
   async ftsRoute(query: string, k: number): Promise<RouteHit[]> {
     const lit = ftsLiteral(query);
     const [rows] = await this.pool.query<FactRow[]>(
-      `SELECT id, claim, source_trust, NULL AS d
+      `SELECT id, claim, source_trust, kind, recorded_at, NULL AS d
          FROM facts
          WHERE state = 'active' AND FTS_MATCH_WORD(${lit}, claim)
          ORDER BY FTS_MATCH_WORD(${lit}, claim) DESC LIMIT ?`,
@@ -78,7 +84,7 @@ export class TidbSearchProvider implements SearchProvider {
     const dist = this.embed.distanceExpr("embedding");
     const p = this.embed.distanceParams(query);
     const [rows] = await this.pool.query<FactRow[]>(
-      `SELECT id, claim, source_trust, ${dist} AS d
+      `SELECT id, claim, source_trust, kind, recorded_at, ${dist} AS d
          FROM facts
          WHERE id IN (SELECT fact_id FROM fact_entities WHERE entity_id = ?)
            AND state = 'active'

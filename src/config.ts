@@ -12,6 +12,10 @@ export interface Config {
     candidatesPerRoute: number;
     rrfK: number;
     limit: number;
+    /** Recency-decay half-life in days for dated facts (event/commitment). */
+    recencyHalfLifeDays: number;
+    /** Toggle recency decay (evergreen kinds are always exempt). */
+    decayEnabled: boolean;
   };
 }
 
@@ -21,7 +25,13 @@ const defaults: Config = {
     model: process.env.EMBED_MODEL ?? "tidbcloud_free/amazon/titan-embed-text-v2",
     dimension: Number(process.env.EMBED_DIM ?? 1024),
   },
-  search: { candidatesPerRoute: 40, rrfK: 60, limit: 20 },
+  search: {
+    candidatesPerRoute: 40,
+    rrfK: 60,
+    limit: 20,
+    recencyHalfLifeDays: 30,
+    decayEnabled: true,
+  },
 };
 
 /** Load config.yaml (behavior) merged over defaults. Secrets stay in .env (docs/92 §3). */

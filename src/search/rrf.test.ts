@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { SearchHit } from "../types.js";
-import { type RankedList, autocut, demoteUntrusted, rrfFuse } from "./rrf.js";
+import type { FactKind, SearchHit } from "../types.js";
+import { type RankedList, autocut, demoteUntrusted, recencyBoost, rrfFuse } from "./rrf.js";
 
 describe("rrfFuse", () => {
   it("rewards items that appear in multiple routes", () => {
@@ -33,6 +33,44 @@ describe("demoteUntrusted", () => {
       { id: "o", claim: "o", sourceTrust: "owner", score: 0.9, routes: ["vector"] },
     ];
     expect(demoteUntrusted(hits)[0]?.id).toBe("o");
+  });
+});
+
+describe("recencyBoost", () => {
+  const now = Date.parse("2026-06-14T00:00:00Z");
+  const mk = (
+    id: string,
+    kind: FactKind | undefined,
+    score: number,
+    daysAgo: number | null,
+  ): SearchHit => ({
+    id,
+    claim: id,
+    sourceTrust: "owner",
+    score,
+    routes: ["vector"],
+    kind,
+    recordedAt: daysAgo === null ? undefined : new Date(now - daysAgo * 86_400_000).toISOString(),
+  });
+
+  it("halves a dated fact at one half-life; leaves evergreen kinds untouched", () => {
+    const out = recencyBoost([mk("ev", "preference", 1, 30), mk("dated", "event", 1, 30)], now, 30);
+    expect(out.find((h) => h.id === "ev")?.score).toBe(1); // preference is evergreen -> exempt
+    expect(out.find((h) => h.id === "dated")?.score).toBeCloseTo(0.5, 5); // 30d == half-life
+  });
+
+  it("decays older dated facts more and re-sorts by score", () => {
+    const out = recencyBoost(
+      [mk("old", "commitment", 1, 60), mk("new", "commitment", 1, 0)],
+      now,
+      30,
+    );
+    expect(out[0]?.id).toBe("new"); // recent ranks first after decay
+    expect(out.find((h) => h.id === "old")?.score).toBeCloseTo(0.25, 5); // 60d == 2 half-lives
+  });
+
+  it("leaves hits without recorded_at or kind untouched", () => {
+    expect(recencyBoost([mk("x", undefined, 1, null)], now, 30)[0]?.score).toBe(1);
   });
 });
 
