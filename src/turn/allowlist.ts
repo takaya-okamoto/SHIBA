@@ -7,6 +7,8 @@ export interface AllowlistStore {
   add(userId: string): Promise<void>;
   /** Has anyone registered yet? Used to decide whether to print a fresh owner setup code. */
   hasAny(): Promise<boolean>;
+  /** All registered owner ids (e.g. recipients for the morning digest). */
+  list(): Promise<string[]>;
 }
 
 /** In-memory allowlist (tests / ephemeral). Not persisted — use FileAllowlist in production. */
@@ -20,6 +22,9 @@ export class InMemoryAllowlist implements AllowlistStore {
   }
   async hasAny(): Promise<boolean> {
     return this.ids.size > 0;
+  }
+  async list(): Promise<string[]> {
+    return [...this.ids];
   }
 }
 
@@ -55,6 +60,10 @@ export class FileAllowlist implements AllowlistStore {
 
   async hasAny(): Promise<boolean> {
     return (await this.load()).size > 0;
+  }
+
+  async list(): Promise<string[]> {
+    return [...(await this.load())];
   }
 }
 

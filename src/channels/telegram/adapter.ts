@@ -1,17 +1,25 @@
 import { Bot } from "grammy";
+import type { Notifier } from "../../digest/scheduler.js";
 import type { SessionManager } from "../../session/manager.js";
 import type { TurnLoop } from "../../turn/turn-loop.js";
 
+/** Handle returned by startTelegram: a Notifier for proactive sends + the polling promise. */
+export interface TelegramHandle {
+  notifier: Notifier;
+  /** Resolves when the bot is stopped. */
+  started: Promise<void>;
+}
+
 /**
  * Telegram via grammy long polling (no public endpoint — docs/91 §1, 98 §1.2). Thin: allowlist +
- * onboarding live in TurnLoop. grammy's sequential polling handles update ordering/dedup.
- * (Live-untested here; verified on deploy with a real bot token.)
+ * onboarding live in TurnLoop. grammy's sequential polling handles update ordering/dedup. Returns a
+ * Notifier so the digest scheduler can push to owners. (Live-untested here; verified on deploy.)
  */
 export function startTelegram(
   token: string,
   turn: TurnLoop,
   sessions?: SessionManager,
-): Promise<void> {
+): TelegramHandle {
   const bot = new Bot(token);
   bot.on("message:text", async (ctx) => {
     const userId = ctx.from?.id ? String(ctx.from.id) : "";
@@ -37,5 +45,9 @@ export function startTelegram(
       clearInterval(typing);
     }
   });
-  return bot.start();
+
+  const notifier: Notifier = {
+    notify: (userId, text) => bot.api.sendMessage(userId, text).then(() => {}),
+  };
+  return { notifier, started: bot.start() };
 }

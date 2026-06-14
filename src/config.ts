@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import "dotenv/config";
 import { parse } from "yaml";
+import type { DigestPolicy } from "./digest/scheduler.js";
 
 export interface Config {
   embedding: {
@@ -17,6 +18,8 @@ export interface Config {
     /** Toggle recency decay (evergreen kinds are always exempt). */
     decayEnabled: boolean;
   };
+  /** Morning digest schedule (docs/96 C-5). */
+  digest: DigestPolicy;
 }
 
 const defaults: Config = {
@@ -32,6 +35,7 @@ const defaults: Config = {
     recencyHalfLifeDays: 30,
     decayEnabled: true,
   },
+  digest: { enabled: true, hour: 8, quietStartHour: 22, quietEndHour: 7, tzOffsetMin: 540 },
 };
 
 /** Load config.yaml (behavior) merged over defaults. Secrets stay in .env (docs/92 §3). */
@@ -41,6 +45,7 @@ export function loadConfig(path = "config.yaml"): Config {
   return {
     embedding: { ...defaults.embedding, ...y.embedding },
     search: { ...defaults.search, ...y.search },
+    digest: { ...defaults.digest, ...y.digest },
   };
 }
 
