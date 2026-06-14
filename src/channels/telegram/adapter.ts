@@ -18,12 +18,13 @@ export function startTelegram(
     if (!userId) return;
     await ctx.replyWithChatAction("typing").catch(() => {});
     try {
-      const reply = await turn.handleMessage(userId, ctx.message.text);
+      const history = sessions?.recentHistory(userId) ?? [];
+      const reply = await turn.handleMessage(userId, ctx.message.text, history);
       await ctx.reply(reply);
-      // Record the owner's message AFTER replying so a boundary flush (extract/commit/reindex)
-      // never delays the user's turn. Non-owners (onboarding) are not recorded into memory.
+      // Record the exchange AFTER replying so a boundary flush (extract/commit/reindex) never
+      // delays the turn. Non-owners (onboarding) are not recorded into a session/memory.
       if (sessions && (await turn.isOwner(userId))) {
-        void sessions.record(userId, ctx.message.text);
+        void sessions.record(userId, ctx.message.text, reply);
       }
     } catch (e) {
       await ctx.reply("いま頭が働きません。あとで試してください。").catch(() => {});
