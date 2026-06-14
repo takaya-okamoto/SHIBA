@@ -1,3 +1,4 @@
+import type { LlmMessage } from "../llm/client.js";
 import {
   type SessionPolicy,
   type SessionState,
@@ -13,18 +14,17 @@ export interface SessionSink {
 
 interface LiveSession {
   state: SessionState;
-  lines: string[]; // owner-typed messages accumulated this session
+  turns: LlmMessage[]; // alternating user/assistant — short-term context for the next reply
 }
 
+/** Default number of recent messages handed back as short-term conversation context. */
+export const HISTORY_WINDOW = 10;
+
 /**
- * Per-user session tracking that fires `SessionSink.closeSession` at the boundary
- * (idle timeout / turn cap / daily reset — see session.ts). This is the scheduling half of
- * Step 3c; the extract→write→commit→reindex work lives in TurnLoop.closeSession.
- *
- * - `record()` is called on each owner message; if the prior session has crossed its boundary it
- *   is flushed first, then a fresh session starts.
- * - `sweep()` should run on an interval so a session that simply goes quiet still gets flushed
- *   without waiting for the user's next message.
+ * Per-user session tracking (Step 3c). Two jobs:
+ *  - short-term context: `recentHistory()` returns the last N messages to seed the next reply.
+ *  - long-term memory: at the session boundary (idle / turn cap / daily reset — see session.ts),
+ *    the owner-typed lines are flushed via `SessionSink.closeSession` (extract -> remember).
  * `now` is injected so the boundaries are unit-testable.
  */
 export class SessionManager {
@@ -36,21 +36,36 @@ export class SessionManager {
     private now: () => number = Date.now,
   ) {}
 
-  async record(userId: string, text: string): Promise<void> {
+  /** Record one exchange (owner message + assistant reply). Flushes the prior session first if it
+   *  has crossed its boundary, then appends to the current session. */
+  async record(userId: string, userText: string, assistantReply: string): Promise<void> {
     const t = this.now();
     const cur = this.sessions.get(userId);
     if (cur && shouldClose(cur.state, t, this.policy)) await this.flush(userId);
+    const exchange: LlmMessage[] = [
+      { role: "user", content: userText },
+      { role: "assistant", content: assistantReply },
+    ];
     const s = this.sessions.get(userId);
     if (s) {
       s.state.lastMessageAt = t;
       s.state.turnCount += 1;
-      s.lines.push(text);
+      s.turns.push(...exchange);
     } else {
       this.sessions.set(userId, {
         state: { startedAt: t, lastMessageAt: t, turnCount: 1 },
-        lines: [text],
+        turns: exchange,
       });
     }
+  }
+
+  /** Last `n` conversation messages (user+assistant) for short-term context. Empty once the session
+   *  has crossed its boundary — a fresh topic shouldn't inherit stale context. */
+  recentHistory(userId: string, n = HISTORY_WINDOW): LlmMessage[] {
+    const s = this.sessions.get(userId);
+    if (!s) return [];
+    if (shouldClose(s.state, this.now(), this.policy)) return [];
+    return s.turns.slice(-n);
   }
 
   /** Flush every session whose boundary has passed (idle / daily). Call periodically. */
@@ -75,9 +90,10 @@ export class SessionManager {
     const s = this.sessions.get(userId);
     if (!s) return;
     this.sessions.delete(userId); // remove first so a failing flush can't loop on sweep
-    if (s.lines.length === 0) return;
+    const ownerLines = s.turns.filter((m) => m.role === "user").map((m) => m.content);
+    if (ownerLines.length === 0) return;
     try {
-      await this.sink.closeSession(s.lines.join("\n"), toLocalDate(s.state.startedAt));
+      await this.sink.closeSession(ownerLines.join("\n"), toLocalDate(s.state.startedAt));
     } catch (e) {
       console.error("session flush failed:", (e as Error).message);
     }

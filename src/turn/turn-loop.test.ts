@@ -76,6 +76,25 @@ describe("TurnLoop.handleMessage", () => {
     expect(system).toContain("[untrusted] 怪しい記憶");
     expect(system).toContain("信頼できる記憶");
   });
+  it("prepends recent history before the current message", async () => {
+    const a = new InMemoryAllowlist();
+    await a.add("u");
+    const respond = vi.fn(async (_system: string, _messages: unknown) => "ok");
+    const t = new TurnLoop({
+      llm: fakeLlm({ respond }),
+      search: async () => [],
+      allowlist: a,
+      store: noStore(),
+      reindex: async () => {},
+      ownerCode: "C",
+    });
+    const history = [
+      { role: "user" as const, content: "前の発話" },
+      { role: "assistant" as const, content: "前の返答" },
+    ];
+    await t.handleMessage("u", "今の質問", history);
+    expect(respond.mock.calls[0]?.[1]).toEqual([...history, { role: "user", content: "今の質問" }]);
+  });
 });
 
 describe("TurnLoop.closeSession", () => {
