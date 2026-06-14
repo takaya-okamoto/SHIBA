@@ -58,6 +58,10 @@ chmod 600 /opt/shiba/app/.env
 
 # --- Launch only once the TiDB password is present (see Gotcha A) ---
 cd /opt/shiba/app
+# data/ is a mounted volume written by the container's `node` user (uid 1000). Create it owned by
+# that uid up front; otherwise Docker creates it root-owned and the app cannot persist memory or
+# the allowlist (writes fail with EACCES, silently caught). See LEARNINGS.
+install -d -m 0775 -o 1000 -g 1000 /opt/shiba/app/data
 if [ -n "${tidb_password}" ]; then
   docker compose up -d --build
 else
