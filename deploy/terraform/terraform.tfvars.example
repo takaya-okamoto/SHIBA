@@ -1,32 +1,35 @@
 # Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
-# Order matters: create the Telegram bot (BotFather) and the API keys BEFORE apply.
+# Create the Telegram bot, the TiDB cluster, and the Bedrock IAM user BEFORE `apply`. See README.
 
 # --- Access ---
 ssh_public_key = "ssh-ed25519 AAAA... you@host"   # contents of your *.pub
 admin_ssh_cidr = "203.0.113.4/32"                 # YOUR IP /32 (find: curl ifconfig.me)
 shiba_repo_url    = "https://github.com/takaya-okamoto/SHIBA.git"
-github_repo_token = "github_pat_..."   # fine-grained PAT, read-only Contents on SHIBA (private). Empty if public.
-
-# --- TiDB Cloud API key (console -> Organization Settings -> API Keys) ---
-tidb_api_public_key  = "..."
-tidb_api_private_key = "..."
+github_repo_token = ""   # fine-grained PAT (read-only Contents) for a PRIVATE repo. Empty if public.
 
 # --- Model provider ---
-model_provider     = "bedrock"          # "bedrock" (keyless, option B) or "anthropic"
-anthropic_api_key  = ""                  # only when model_provider = "anthropic"
-# Bedrock model ids (region-specific inference profiles) — required when model_provider="bedrock".
-# Find the exact ids in the Bedrock console for your region/account (and submit the FTU form once).
-bedrock_response_model = "apac.anthropic.claude-sonnet-4-..."
-bedrock_extract_model  = "apac.anthropic.claude-haiku-..."
+model_provider    = "bedrock"           # "bedrock" (IAM user keys) or "anthropic" (API key)
+anthropic_api_key = ""                   # only when model_provider = "anthropic"
+
+# Bedrock (model_provider = "bedrock"): IAM user access keys + jp. inference-profile ids.
+# Keyless via an instance role is NOT possible on a plain Lightsail instance (see README, Gotcha B).
+# Submit the Bedrock model-access (FTU) form once, then find real ids via:
+#   aws bedrock list-inference-profiles --region ap-northeast-1
+aws_access_key_id      = "AKIA..."       # IAM user limited to bedrock:InvokeModel[WithResponseStream]
+aws_secret_access_key  = "..."
+bedrock_response_model = "jp.anthropic.claude-sonnet-4-5-20250929-v1:0"
+bedrock_extract_model  = "jp.anthropic.claude-haiku-..."   # a lighter Haiku jp. profile
 
 # --- App secrets ---
 telegram_bot_token = "123456:ABC-..."   # from @BotFather
-gemini_api_key     = "AIza..."           # for TiDB auto-embedding (BYOK)
+gemini_api_key     = ""                  # empty = free managed Titan auto-embedding (default)
 
-# --- TiDB SQL password (Gotcha A) ---
-# Leave EMPTY on the first apply. After the cluster exists, reset the password in
-# the TiDB Cloud console, paste it here, and run `terraform apply` again.
-tidb_password = ""
+# --- TiDB Cloud Starter (create the cluster MANUALLY first — see README, Gotcha A) ---
+# Console -> Create Cluster -> Starter (free) -> AWS Tokyo. Then the Connect dialog:
+tidb_host     = "gateway01.ap-northeast-1.prod.aws.tidbcloud.com"
+tidb_user     = "xxxxxxx.root"
+tidb_port     = 4000
+tidb_password = ""   # Connect -> Generate/Reset password. May be empty on first apply, then re-apply.
 
 # --- Optional ---
 memory_git_remote = ""   # e.g. git@github.com:you/shiba-memory.git

@@ -1,13 +1,10 @@
 # ===========================================================================
-# TiDB Cloud — free Starter (serverless) cluster = SHIBA's derived index.
-# Free tier = simply OMIT `spending_limit`. Default free quota:
-#   5 GiB row + 5 GiB columnar + 50M RU/month, max 5 free clusters per org.
+# TiDB Cloud Starter (serverless) = SHIBA's derived index — created MANUALLY.
+# The cluster is NOT managed by Terraform: the tidbcloud provider v0.4.x churns on
+# updates to an existing cluster (auto_scaling "inconsistent result"; "can't set both
+# spending limit and capacity"). Create it once in the console (free tier = omit the
+# spending limit) and pass its Connect-dialog details via the tidb_* variables. See README.
 # ===========================================================================
-# NOTE: the cluster is managed OUTSIDE Terraform now. It was created once via the tidbcloud
-# provider, then `terraform state rm`'d, because provider v0.4.10 churns/errors when updating an
-# existing cluster (auto_scaling "inconsistent result"; "can't set both spending limit and
-# capacity"). The ACTIVE cluster's connection details are passed in via vars (tidb_host/tidb_user).
-# See OSS/shiba/docs/LEARNINGS.md. To re-create from scratch, re-add this resource on a fresh org.
 
 # ===========================================================================
 # Lightsail — resident 24/7 VPS = SHIBA app + source of truth (Markdown+git).
@@ -30,7 +27,8 @@ resource "aws_lightsail_instance" "shiba" {
     github_repo_token      = var.github_repo_token
     model_provider         = var.model_provider
     aws_region             = var.aws_region
-    bedrock_role_arn       = join("", aws_iam_role.bedrock[*].arn) # "" when model_provider=anthropic (count 0)
+    aws_access_key_id      = var.aws_access_key_id
+    aws_secret_access_key  = var.aws_secret_access_key
     bedrock_response_model = var.bedrock_response_model
     bedrock_extract_model  = var.bedrock_extract_model
     anthropic_api_key      = var.anthropic_api_key
