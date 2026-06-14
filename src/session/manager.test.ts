@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SessionManager, type SessionSink } from "./manager.js";
+import { HISTORY_WINDOW, SessionManager, type SessionSink } from "./manager.js";
 import { defaultPolicy } from "./session.js";
 
 function fakeSink() {
@@ -47,6 +47,10 @@ describe("SessionManager", () => {
     ]);
     t += defaultPolicy.idleMs + 1; // boundary crossed -> fresh context
     expect(m.recentHistory("u1")).toEqual([]);
+  });
+
+  it("HISTORY_WINDOW is 30 (15 exchanges)", () => {
+    expect(HISTORY_WINDOW).toBe(30);
   });
 
   it("sweep() flushes a session that simply went quiet, and is idempotent", async () => {
