@@ -45,13 +45,20 @@ export class TidbDigestSource implements DigestSource {
  * Format the morning digest. Returns null when there's nothing to report — the "silence principle"
  * (docs/96 C-5): don't send an empty digest. Dreaming results can be appended here later.
  */
-export function buildDigest(dueToday: string[], overdue: string[]): string | null {
+export function buildDigest(
+  dueToday: string[],
+  overdue: string[],
+  insights: string[] = [],
+): string | null {
   const parts: string[] = [];
   if (dueToday.length > 0) {
     parts.push(`今日の予定・約束:\n${dueToday.map((c) => `・${c}`).join("\n")}`);
   }
   if (overdue.length > 0) {
     parts.push(`気になっている約束:\n${overdue.map((c) => `・${c}`).join("\n")}`);
+  }
+  if (insights.length > 0) {
+    parts.push(`🌙 ゆうべ気づいたこと:\n${insights.map((i) => `・${i}`).join("\n")}`);
   }
   if (parts.length === 0) return null;
   return `おはようございます。\n\n${parts.join("\n\n")}`;

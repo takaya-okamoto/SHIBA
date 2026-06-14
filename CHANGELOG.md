@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Nightly dreaming (`DreamScheduler` + reconcile): once a day (default 03:00 JST) reviews active
+  facts for contradictions/duplicates and stores short insights; the next morning's digest surfaces
+  them ("🌙 ゆうべ気づいたこと"). NON-DESTRUCTIVE — it never edits facts; the owner decides what to do.
 - Morning digest (`DigestScheduler`): once a day at a configurable hour (default 08:00 JST), outside
   quiet hours (22:00–07:00), proactively sends the owner today's + overdue commitments. Honors the
   silence principle (skips when there's nothing to report); last-sent date is persisted to

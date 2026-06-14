@@ -2,55 +2,60 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { type DigestSource, buildDigest } from "./digest.js";
 
-/** Send a message to a registered owner (Telegram, via the adapter). */
 export interface Notifier {
   notify(userId: string, text: string): Promise<void>;
 }
 
 export interface DigestPolicy {
   enabled: boolean;
-  hour: number; // local hour to send the digest (e.g. 8)
-  quietStartHour: number; // proactive sends are blocked from here ...
-  quietEndHour: number; // ... until here (e.g. 22 -> 7)
-  tzOffsetMin: number; // local timezone offset from UTC in minutes (JST = 540)
+  hour: number;
+  quietStartHour: number;
+  quietEndHour: number;
+  tzOffsetMin: number;
 }
 
-/** Local calendar date (YYYY-MM-DD) and hour for `nowMs` under the given tz offset. */
 export function localParts(nowMs: number, tzOffsetMin: number): { date: string; hour: number } {
   const d = new Date(nowMs + tzOffsetMin * 60_000);
   return { date: d.toISOString().slice(0, 10), hour: d.getUTCHours() };
 }
 
-/**
- * Whether to send a digest now: at most once/day, at or after the digest hour, outside quiet hours
- * (docs/96 C-5). `nowMs` and `lastSentDate` are injected so this is a pure, testable decision.
- */
+/** Once-a-day gate: not run yet today, and at/after the given local hour. Shared by digest + dream. */
+export function shouldRunDaily(
+  nowMs: number,
+  lastRunDate: string | null,
+  hour: number,
+  tzOffsetMin: number,
+): boolean {
+  const { date, hour: h } = localParts(nowMs, tzOffsetMin);
+  return lastRunDate !== date && h >= hour;
+}
+
+/** At most once/day, at/after the digest hour, outside quiet hours (docs/96 C-5). Pure + testable. */
 export function shouldSendDigest(
   nowMs: number,
   lastSentDate: string | null,
   p: DigestPolicy,
 ): boolean {
   if (!p.enabled) return false;
-  const { date, hour } = localParts(nowMs, p.tzOffsetMin);
-  if (lastSentDate === date) return false; // already handled today
-  if (hour < p.hour) return false; // before the digest hour
-  if (hour >= p.quietStartHour || hour < p.quietEndHour) return false; // quiet hours
-  return true;
+  if (!shouldRunDaily(nowMs, lastSentDate, p.hour, p.tzOffsetMin)) return false;
+  const { hour } = localParts(nowMs, p.tzOffsetMin);
+  return !(hour >= p.quietStartHour || hour < p.quietEndHour);
 }
 
 export interface DigestSchedulerDeps {
   source: DigestSource;
   notifier: Notifier;
-  recipients: () => Promise<string[]>; // owner ids (allowlist)
+  recipients: () => Promise<string[]>;
   policy: DigestPolicy;
+  /** Optional nightly-dream insights for `today` (appended to the digest). */
+  insights?: (today: string) => Promise<string[]>;
   statePath?: string;
   now?: () => number;
 }
 
 /**
- * Fires the morning digest. `tick()` is called periodically; it sends at most once/day and persists
- * the last-sent date (./data/state/digest.json) so a restart doesn't re-send. Honors the silence
- * principle (no digest when there's nothing to report) but still marks the day handled.
+ * Fires the morning digest. tick() sends at most once/day, persists the last-sent date so a restart
+ * doesn't re-send, and honors the silence principle (no digest when there's nothing to report).
  */
 export class DigestScheduler {
   private now: () => number;
@@ -66,9 +71,10 @@ export class DigestScheduler {
     const today = localParts(nowMs, this.deps.policy.tzOffsetMin).date;
     const due = await this.deps.source.commitmentsDueToday(today);
     const overdue = await this.deps.source.commitmentsOverdue(today, 2);
-    await this.saveLastSent(today); // mark handled even if silent (don't recheck all day)
-    const text = buildDigest(due, overdue);
-    if (!text) return; // silence principle
+    const insights = this.deps.insights ? await this.deps.insights(today) : [];
+    await this.saveLastSent(today);
+    const text = buildDigest(due, overdue, insights);
+    if (!text) return;
     for (const userId of await this.deps.recipients()) {
       await this.deps.notifier
         .notify(userId, text)
