@@ -6,7 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Short-term conversation context: the last 10 messages of the open session are passed to the
+- Prompt caching (1h TTL) + model-driven `memory_search` tool: the system prompt (persona +
+  memory protocol) and tool definitions form a byte-stable cached prefix; recall is injected on
+  the current user turn so `system` stays cacheable; the model may call `memory_search` to go
+  deeper. `respond()` now runs a tool loop, shared across the Anthropic and Bedrock clients.
+- Short-term conversation context: the last 30 messages of the open session are passed to the
   LLM each turn (`SessionManager.recentHistory`), alongside the searched long-term memories;
   reset at the session boundary so a new topic doesn't inherit stale context.
 - Session-boundary memory flush (Step 3c): the owner's conversation is accumulated per session

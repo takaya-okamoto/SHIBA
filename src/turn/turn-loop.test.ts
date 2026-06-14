@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { LlmClient } from "../llm/client.js";
+import type { LlmClient, RespondOptions } from "../llm/client.js";
 import type { SearchHit } from "../types.js";
 import { InMemoryAllowlist } from "./allowlist.js";
 import { type MemoryWriter, TurnLoop } from "./turn-loop.js";
@@ -41,6 +41,7 @@ describe("TurnLoop.handleMessage", () => {
     });
     expect(await t.handleMessage("u", "hi")).toContain("セットアップコード");
   });
+
   it("registers with the one-time code", async () => {
     const a = new InMemoryAllowlist();
     const t = new TurnLoop({
@@ -54,10 +55,11 @@ describe("TurnLoop.handleMessage", () => {
     expect(await t.handleMessage("u", "C")).toContain("登録");
     expect(await a.isAllowed("u")).toBe(true);
   });
-  it("recalls + responds for an allowed user, labeling untrusted memories", async () => {
+
+  it("injects recall on the user turn (not system), offers memory_search, labels untrusted", async () => {
     const a = new InMemoryAllowlist();
     await a.add("u");
-    const respond = vi.fn(async (_system: string, _messages: unknown) => "ok");
+    const respond = vi.fn(async (_opts: RespondOptions) => "ok");
     const search = vi.fn(async () => [
       hit("信頼できる記憶", "owner"),
       hit("怪しい記憶", "untrusted"),
@@ -72,17 +74,24 @@ describe("TurnLoop.handleMessage", () => {
     });
     expect(await t.handleMessage("u", "質問")).toBe("ok");
     expect(search).toHaveBeenCalledOnce();
-    const system = respond.mock.calls[0]?.[0] ?? "";
-    expect(system).toContain("[untrusted] 怪しい記憶");
-    expect(system).toContain("信頼できる記憶");
+    const opts = respond.mock.calls[0]?.[0];
+    // recall lives on the current user turn, keeping `system` byte-stable (cacheable)
+    const lastUser = opts?.messages.at(-1)?.content;
+    expect(typeof lastUser).toBe("string");
+    expect(lastUser).toContain("<relevant-memories>");
+    expect(lastUser).toContain("[untrusted] 怪しい記憶");
+    expect(lastUser).toContain("信頼できる記憶");
+    expect(opts?.system).not.toContain("怪しい記憶");
+    expect(opts?.tools?.map((tool) => tool.name)).toContain("memory_search");
   });
+
   it("prepends recent history before the current message", async () => {
     const a = new InMemoryAllowlist();
     await a.add("u");
-    const respond = vi.fn(async (_system: string, _messages: unknown) => "ok");
+    const respond = vi.fn(async (_opts: RespondOptions) => "ok");
     const t = new TurnLoop({
       llm: fakeLlm({ respond }),
-      search: async () => [],
+      search: async () => [], // no hits -> recall block empty -> user content is exactly the text
       allowlist: a,
       store: noStore(),
       reindex: async () => {},
@@ -93,7 +102,10 @@ describe("TurnLoop.handleMessage", () => {
       { role: "assistant" as const, content: "前の返答" },
     ];
     await t.handleMessage("u", "今の質問", history);
-    expect(respond.mock.calls[0]?.[1]).toEqual([...history, { role: "user", content: "今の質問" }]);
+    expect(respond.mock.calls[0]?.[0]?.messages).toEqual([
+      ...history,
+      { role: "user", content: "今の質問" },
+    ]);
   });
 });
 

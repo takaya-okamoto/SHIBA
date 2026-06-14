@@ -17,8 +17,8 @@ interface LiveSession {
   turns: LlmMessage[]; // alternating user/assistant — short-term context for the next reply
 }
 
-/** Default number of recent messages handed back as short-term conversation context. */
-export const HISTORY_WINDOW = 10;
+/** Default number of recent messages handed back as short-term conversation context (15 exchanges). */
+export const HISTORY_WINDOW = 30;
 
 /**
  * Per-user session tracking (Step 3c). Two jobs:

@@ -16,7 +16,11 @@ export function startTelegram(
   bot.on("message:text", async (ctx) => {
     const userId = ctx.from?.id ? String(ctx.from.id) : "";
     if (!userId) return;
-    await ctx.replyWithChatAction("typing").catch(() => {});
+    // Keep the typing indicator alive across the (possibly multi-round, tool-using) reply —
+    // Telegram's chat action expires after ~5s, so re-send on an interval until we reply.
+    const sendTyping = () => ctx.replyWithChatAction("typing").catch(() => {});
+    sendTyping();
+    const typing = setInterval(sendTyping, 5000);
     try {
       const history = sessions?.recentHistory(userId) ?? [];
       const reply = await turn.handleMessage(userId, ctx.message.text, history);
@@ -29,6 +33,8 @@ export function startTelegram(
     } catch (e) {
       await ctx.reply("いま頭が働きません。あとで試してください。").catch(() => {});
       console.error("turn error:", (e as Error).message);
+    } finally {
+      clearInterval(typing);
     }
   });
   return bot.start();
