@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import "dotenv/config";
 import { parse } from "yaml";
 import type { DigestPolicy } from "./digest/scheduler.js";
+import type { DreamPolicy } from "./dream/scheduler.js";
 
 export interface Config {
   embedding: {
@@ -20,6 +21,8 @@ export interface Config {
   };
   /** Morning digest schedule (docs/96 C-5). */
   digest: DigestPolicy;
+  /** Nightly reconcile (dreaming) schedule. */
+  dream: DreamPolicy;
 }
 
 const defaults: Config = {
@@ -36,6 +39,7 @@ const defaults: Config = {
     decayEnabled: true,
   },
   digest: { enabled: true, hour: 8, quietStartHour: 22, quietEndHour: 7, tzOffsetMin: 540 },
+  dream: { enabled: true, hour: 3, tzOffsetMin: 540 },
 };
 
 /** Load config.yaml (behavior) merged over defaults. Secrets stay in .env (docs/92 §3). */
@@ -46,6 +50,7 @@ export function loadConfig(path = "config.yaml"): Config {
     embedding: { ...defaults.embedding, ...y.embedding },
     search: { ...defaults.search, ...y.search },
     digest: { ...defaults.digest, ...y.digest },
+    dream: { ...defaults.dream, ...y.dream },
   };
 }
 

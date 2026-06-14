@@ -4,6 +4,8 @@ import { startTelegram } from "./channels/telegram/adapter.js";
 import { config } from "./config.js";
 import { TidbDigestSource } from "./digest/digest.js";
 import { DigestScheduler } from "./digest/scheduler.js";
+import { TidbReconcileSource } from "./dream/reconcile.js";
+import { DreamScheduler } from "./dream/scheduler.js";
 import { closePool } from "./index/db.js";
 import { migrate } from "./index/migrate.js";
 import { reindex } from "./index/reindex.js";
@@ -30,8 +32,9 @@ async function serve(): Promise<void> {
     ownerCode = randomBytes(4).toString("hex");
     console.log(`owner setup code: ${ownerCode}  (DM this once to the bot to register)`);
   }
+  const llm = getLlm();
   const turn = new TurnLoop({
-    llm: getLlm(),
+    llm,
     search: (q) => search(q),
     allowlist,
     store: new FsGitMemoryStore(),
@@ -55,14 +58,28 @@ async function serve(): Promise<void> {
 
   const { notifier, started } = startTelegram(token, turn, sessions);
 
-  // Morning digest: tick periodically; sends at most once/day at the digest hour, outside quiet
-  // hours, and only when there's something to report (silence principle). State in ./data/state.
+  // Nightly dreaming: reconcile facts -> insights for the next morning's digest (non-destructive).
+  const dream = new DreamScheduler({
+    source: new TidbReconcileSource(),
+    llm,
+    policy: config.dream,
+  });
+  if (config.dream.enabled) {
+    const dreamTimer = setInterval(() => {
+      dream.tick().catch((e) => console.error("dream tick:", (e as Error).message));
+    }, DIGEST_TICK_MS);
+    dreamTimer.unref();
+  }
+
+  // Morning digest: today's + overdue commitments, plus last night's dream insights (silence
+  // principle; once/day, outside quiet hours). State in ./data/state.
   if (config.digest.enabled) {
     const digest = new DigestScheduler({
       source: new TidbDigestSource(),
       notifier,
       recipients: () => allowlist.list(),
       policy: config.digest,
+      insights: (today) => dream.insightsFor(today),
     });
     const digestTimer = setInterval(() => {
       digest.tick().catch((e) => console.error("digest tick:", (e as Error).message));
