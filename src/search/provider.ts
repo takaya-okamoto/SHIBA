@@ -1,6 +1,6 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
-import { type EmbeddingProvider, getEmbeddingProvider } from "../index/embed.js";
 import { getPool } from "../index/db.js";
+import { type EmbeddingProvider, getEmbeddingProvider } from "../index/embed.js";
 import type { SourceTrust } from "../types.js";
 import { ftsLiteral } from "./fts.js";
 

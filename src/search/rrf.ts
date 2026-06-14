@@ -48,7 +48,7 @@ export function autocut(hits: SearchHit[], limit: number): SearchHit[] {
   let cut = top.length;
   let maxGap = -1;
   for (let i = 1; i < top.length; i++) {
-    const gap = top[i - 1]!.score - top[i]!.score;
+    const gap = (top[i - 1]?.score ?? 0) - (top[i]?.score ?? 0);
     if (gap > maxGap) {
       maxGap = gap;
       cut = i;

@@ -32,10 +32,23 @@ export function parseExtractionOutput(raw: unknown, messageTrust: SourceTrust): 
       ? o.entities.filter((e): e is string => typeof e === "string" && SLUG.test(e))
       : [];
     const validFrom =
-      typeof o.valid_from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.valid_from) ? o.valid_from : null;
+      typeof o.valid_from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.valid_from)
+        ? o.valid_from
+        : null;
     const sourceTrust: SourceTrust =
-      messageTrust === "untrusted" ? "untrusted" : o.source_trust === "untrusted" ? "untrusted" : "owner";
-    out.push({ claim, kind, entities: [...new Set(entities)], validFrom, sourceTrust, state: "active" });
+      messageTrust === "untrusted"
+        ? "untrusted"
+        : o.source_trust === "untrusted"
+          ? "untrusted"
+          : "owner";
+    out.push({
+      claim,
+      kind,
+      entities: [...new Set(entities)],
+      validFrom,
+      sourceTrust,
+      state: "active",
+    });
   }
   return out;
 }

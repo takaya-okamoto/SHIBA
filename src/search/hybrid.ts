@@ -2,7 +2,7 @@ import { config } from "../config.js";
 import type { SearchHit, SearchOptions } from "../types.js";
 import { resolveEntities } from "./entity.js";
 import { type SearchProvider, TidbSearchProvider } from "./provider.js";
-import { autocut, demoteUntrusted, type RankedList, rrfFuse } from "./rrf.js";
+import { type RankedList, autocut, demoteUntrusted, rrfFuse } from "./rrf.js";
 
 /**
  * Hybrid recall (docs/91 §2.3, 101 §7): text-route (vector + FTS) + entity-route, fused by RRF,
@@ -22,7 +22,10 @@ export async function search(
   const lists: RankedList[] = [];
 
   // text-route: vector + FTS in parallel
-  const [vec, fts] = await Promise.all([provider.vectorRoute(query, k), provider.ftsRoute(query, k)]);
+  const [vec, fts] = await Promise.all([
+    provider.vectorRoute(query, k),
+    provider.ftsRoute(query, k),
+  ]);
   lists.push({ route: "vector", hits: vec }, { route: "fts", hits: fts });
 
   // entity-route: only when the query resolved to entities (gate avoids irrelevant pulls, 101 §7)

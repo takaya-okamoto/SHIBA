@@ -3,7 +3,9 @@ import { chunkMarkdown } from "./chunk.js";
 
 describe("chunkMarkdown", () => {
   it("sections by heading, paragraphs by blank line, drops fences", () => {
-    const md = ["# Day", "para one.", "", "para two.", "", "```facts v1", "- [fact] x", "```"].join("\n");
+    const md = ["# Day", "para one.", "", "para two.", "", "```facts v1", "- [fact] x", "```"].join(
+      "\n",
+    );
     const chunks = chunkMarkdown(md);
     expect(chunks.map((c) => c.content)).toEqual(["para one.", "para two."]);
     expect(chunks[0]?.heading).toBe("Day");

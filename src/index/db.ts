@@ -7,7 +7,8 @@ let pool: Pool | undefined;
 /** Shared TiDB connection pool. TLS required; ids returned as strings (bigNumberStrings). */
 export function getPool(): Pool {
   if (pool) return pool;
-  const { TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE, TIDB_CA_PATH } = process.env;
+  const { TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE, TIDB_CA_PATH } =
+    process.env;
   if (!TIDB_HOST || !TIDB_USER || !TIDB_PASSWORD) {
     throw new Error("Missing TIDB_HOST / TIDB_USER / TIDB_PASSWORD in .env");
   }

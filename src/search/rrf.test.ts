@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchHit } from "../types.js";
-import { autocut, demoteUntrusted, type RankedList, rrfFuse } from "./rrf.js";
+import { type RankedList, autocut, demoteUntrusted, rrfFuse } from "./rrf.js";
 
 describe("rrfFuse", () => {
   it("rewards items that appear in multiple routes", () => {
