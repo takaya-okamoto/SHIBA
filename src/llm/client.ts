@@ -96,6 +96,13 @@ async function runToolLoop(
       messages: convo,
       ...(toolDefs ? { tools: toolDefs } : {}),
     });
+    if (process.env.LOG_LLM_USAGE && res.usage) {
+      const u = res.usage;
+      console.log(
+        `[llm] in=${u.input_tokens} out=${u.output_tokens} ` +
+          `cache_write=${u.cache_creation_input_tokens ?? 0} cache_read=${u.cache_read_input_tokens ?? 0}`,
+      );
+    }
     if (res.stop_reason !== "tool_use" || round === maxToolRounds) return textOf(res);
 
     // Echo the assistant turn VERBATIM (it carries the tool_use blocks the API needs to match).
