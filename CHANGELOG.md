@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Morning digest (`DigestScheduler`): once a day at a configurable hour (default 08:00 JST), outside
+  quiet hours (22:00–07:00), proactively sends the owner today's + overdue commitments. Honors the
+  silence principle (skips when there's nothing to report); last-sent date is persisted to
+  `./data/state/digest.json`. Adds proactive send (`Notifier` via the Telegram adapter) and
+  `AllowlistStore.list()`.
 - Recency decay in recall (`recencyBoost`): dated facts (event/commitment) lose weight with age
   (`score *= exp(-(ln2/halfLife)*ageDays)` on `recorded_at`, default 30-day half-life), while
   evergreen kinds (preference/belief/fact) are exempt. Applied after RRF + untrusted demotion;

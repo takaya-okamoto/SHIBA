@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
 import "dotenv/config";
 import { startTelegram } from "./channels/telegram/adapter.js";
+import { config } from "./config.js";
+import { TidbDigestSource } from "./digest/digest.js";
+import { DigestScheduler } from "./digest/scheduler.js";
 import { closePool } from "./index/db.js";
 import { migrate } from "./index/migrate.js";
 import { reindex } from "./index/reindex.js";
@@ -12,6 +15,7 @@ import { FileAllowlist } from "./turn/allowlist.js";
 import { TurnLoop } from "./turn/turn-loop.js";
 
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+const DIGEST_TICK_MS = 10 * 60 * 1000;
 
 async function serve(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -49,8 +53,25 @@ async function serve(): Promise<void> {
     });
   }
 
+  const { notifier, started } = startTelegram(token, turn, sessions);
+
+  // Morning digest: tick periodically; sends at most once/day at the digest hour, outside quiet
+  // hours, and only when there's something to report (silence principle). State in ./data/state.
+  if (config.digest.enabled) {
+    const digest = new DigestScheduler({
+      source: new TidbDigestSource(),
+      notifier,
+      recipients: () => allowlist.list(),
+      policy: config.digest,
+    });
+    const digestTimer = setInterval(() => {
+      digest.tick().catch((e) => console.error("digest tick:", (e as Error).message));
+    }, DIGEST_TICK_MS);
+    digestTimer.unref();
+  }
+
   console.log("starting Telegram long polling ...");
-  await startTelegram(token, turn, sessions); // resolves when the bot is stopped
+  await started; // resolves when the bot is stopped
 }
 
 async function main(): Promise<void> {
