@@ -7,8 +7,11 @@ import { reindex } from "./index/reindex.js";
 import { getLlm } from "./llm/client.js";
 import { FsGitMemoryStore } from "./memory/store.js";
 import { search } from "./search/index.js";
+import { SessionManager } from "./session/manager.js";
 import { InMemoryAllowlist } from "./turn/allowlist.js";
 import { TurnLoop } from "./turn/turn-loop.js";
+
+const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 
 async function serve(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -23,10 +26,23 @@ async function serve(): Promise<void> {
     reindex: () => reindex({}),
     ownerCode,
   });
+
+  // Step 3c: track sessions and flush them (extract -> remember) at the boundary. The periodic
+  // sweep closes sessions that simply went quiet; a final flush runs on shutdown.
+  const sessions = new SessionManager(turn);
+  const sweep = setInterval(() => {
+    sessions.sweep().catch((e) => console.error("session sweep:", (e as Error).message));
+  }, SWEEP_INTERVAL_MS);
+  sweep.unref();
+  for (const sig of ["SIGTERM", "SIGINT"] as const) {
+    process.once(sig, () => {
+      console.log(`${sig}: flushing ${sessions.openCount} open session(s) ...`);
+      sessions.flushAll().finally(() => process.exit(0));
+    });
+  }
+
   console.log("starting Telegram long polling ...");
-  // NOTE: session-close flush (turn.closeSession) is not yet scheduled — needs a session store +
-  // idle sweep (Step 3c). handleMessage (recall + respond) works now.
-  await startTelegram(token, turn); // resolves when the bot is stopped
+  await startTelegram(token, turn, sessions); // resolves when the bot is stopped
 }
 
 async function main(): Promise<void> {

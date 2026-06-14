@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Session-boundary memory flush (Step 3c): the owner's conversation is accumulated per session
+  and, at the boundary (idle timeout / turn cap / daily reset), extracted into facts and
+  committed (`SessionManager` drives `TurnLoop.closeSession`; a periodic sweep + shutdown flush
+  cover sessions that simply go quiet).
 - Initial SHIBA app: Telegram channel adapter, per-user turn loop, hybrid recall
   (vector + full-text + entity route) over TiDB Cloud Starter, fact extraction,
   Markdown+git memory store, and `migrate` / `reindex` CLI commands.

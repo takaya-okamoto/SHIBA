@@ -41,6 +41,11 @@ export class TurnLoop {
     return this.deps.llm.respond(this.buildSystem(hits), messages);
   }
 
+  /** Is this user the registered owner? Only owner turns are recorded into a session/memory. */
+  isOwner(userId: string): Promise<boolean> {
+    return this.deps.allowlist.isAllowed(userId);
+  }
+
   /** Session boundary flush: extract owner-typed transcript -> Markdown fence -> commit -> reindex. */
   async closeSession(transcript: string, date: string): Promise<number> {
     const facts = await extractFacts(transcript, "owner-typed", this.deps.llm);
