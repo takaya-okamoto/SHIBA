@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Recency decay in recall (`recencyBoost`): dated facts (event/commitment) lose weight with age
+  (`score *= exp(-(ln2/halfLife)*ageDays)` on `recorded_at`, default 30-day half-life), while
+  evergreen kinds (preference/belief/fact) are exempt. Applied after RRF + untrusted demotion;
+  tunable via `search.recencyHalfLifeDays` / `search.decayEnabled`.
 - Persistent allowlist (`FileAllowlist`, `./data/state/allowlist.json` on the mounted volume):
   owner registration now survives restarts/redeploys; a one-time setup code is printed only on a
   fresh install (nobody registered yet), and an empty code never registers anyone.

@@ -35,6 +35,10 @@ export interface SearchHit {
   routes: SearchRoute[];
   /** Cosine distance from the vector/entity route, if any (lower = closer). */
   distance?: number;
+  /** When the fact was recorded (ISO) — used for recency decay. */
+  recordedAt?: string;
+  /** Fact kind; evergreen kinds (preference/belief/fact) are exempt from recency decay. */
+  kind?: FactKind;
 }
 
 export interface SearchOptions {

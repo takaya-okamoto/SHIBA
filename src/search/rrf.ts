@@ -1,4 +1,4 @@
-import type { SearchHit, SearchRoute } from "../types.js";
+import type { FactKind, SearchHit, SearchRoute } from "../types.js";
 import type { RouteHit } from "./provider.js";
 
 export interface RankedList {
@@ -27,6 +27,8 @@ export function rrfFuse(lists: RankedList[], rrfK: number): SearchHit[] {
           score: inc,
           routes: [route],
           distance: h.distance,
+          recordedAt: h.recordedAt,
+          kind: h.kind,
         });
       }
     });
@@ -38,6 +40,25 @@ export function rrfFuse(lists: RankedList[], rrfK: number): SearchHit[] {
 export function demoteUntrusted(hits: SearchHit[], factor = 0.5): SearchHit[] {
   return hits
     .map((h) => (h.sourceTrust === "untrusted" ? { ...h, score: h.score * factor } : h))
+    .sort((a, b) => b.score - a.score);
+}
+
+/** Kinds that fade with age. Evergreen kinds (preference/belief/fact) are exempt from recency decay. */
+const DATED_KINDS = new Set<FactKind>(["event", "commitment"]);
+
+/**
+ * Recency decay (docs/90 §3-①-3, openclaw temporal-decay): dated facts lose weight with age,
+ * `score *= exp(-(ln2 / halfLifeDays) * ageDays)`, based on recorded_at. Evergreen kinds and hits
+ * without a recorded_at are left untouched. `nowMs` is injected for testability.
+ */
+export function recencyBoost(hits: SearchHit[], nowMs: number, halfLifeDays: number): SearchHit[] {
+  const k = Math.LN2 / halfLifeDays;
+  return hits
+    .map((h) => {
+      if (!h.recordedAt || !h.kind || !DATED_KINDS.has(h.kind)) return h;
+      const ageDays = Math.max(0, (nowMs - Date.parse(h.recordedAt)) / 86_400_000);
+      return { ...h, score: h.score * Math.exp(-k * ageDays) };
+    })
     .sort((a, b) => b.score - a.score);
 }
 
