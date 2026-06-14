@@ -33,10 +33,15 @@ fi
 
 # --- Secrets (.env, 0600) ---
 # NOTE: these values are baked into Lightsail user_data and tfstate (see README, Gotcha C).
+# Bedrock auth = IAM user access keys (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). The app's
+# AnthropicBedrock SDK reads them from the environment (the default AWS credential chain
+# prefers env vars), so no ~/.aws files are needed.
 umask 077
 cat > /opt/shiba/app/.env <<'ENVEOF'
 MODEL_PROVIDER=${model_provider}
 AWS_REGION=${aws_region}
+AWS_ACCESS_KEY_ID=${aws_access_key_id}
+AWS_SECRET_ACCESS_KEY=${aws_secret_access_key}
 BEDROCK_RESPONSE_MODEL=${bedrock_response_model}
 BEDROCK_EXTRACT_MODEL=${bedrock_extract_model}
 ANTHROPIC_API_KEY=${anthropic_api_key}
@@ -51,27 +56,10 @@ MEMORY_GIT_REMOTE=${memory_git_remote}
 ENVEOF
 chmod 600 /opt/shiba/app/.env
 
-# --- Option B (keyless Bedrock): write the SDK config so the box assumes the instance role via IMDS.
-#     The role's trust policy (bedrock.tf) trusts AmazonLightsailInstance/*; the SDK chains to it.
-#     ⚠️ Requires the IMDS spike (deploy/terraform/README "Option B"): a PLAIN Lightsail instance must
-#     expose an assumable base identity. If `aws sts get-caller-identity` in the container fails,
-#     set model_provider=anthropic instead. compose.yml mounts this config into the app container.
-if [ "${model_provider}" = "bedrock" ] && [ -n "${bedrock_role_arn}" ]; then
-  install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/.aws
-  cat > /home/ubuntu/.aws/config <<'AWSEOF'
-[default]
-region = ${aws_region}
-role_arn = ${bedrock_role_arn}
-credential_source = Ec2InstanceMetadata
-AWSEOF
-  chown ubuntu:ubuntu /home/ubuntu/.aws/config
-  chmod 600 /home/ubuntu/.aws/config
-fi
-
 # --- Launch only once the TiDB password is present (see Gotcha A) ---
 cd /opt/shiba/app
 if [ -n "${tidb_password}" ]; then
-  docker compose up -d
+  docker compose up -d --build
 else
   echo "TIDB_PASSWORD empty: skipping 'docker compose up'. Set it (console reset) and re-apply."
 fi

@@ -17,22 +17,18 @@ output "tidb_user" {
   value       = var.tidb_user
 }
 
-output "bedrock_role_arn" {
-  description = "Role the instance assumes for keyless Bedrock (option B). null when model_provider=anthropic. Used in ~/.aws/config (role_arn) once the IMDS spike passes."
-  value       = one(aws_iam_role.bedrock[*].arn)
-}
-
 output "next_steps" {
   value = <<-EOT
 
     ── Next steps ───────────────────────────────────────────────────────────
-    1. TiDB password (Gotcha A): the tidbcloud provider does NOT manage the SQL
-       password. Open the TiDB Cloud console -> this cluster -> reset password,
-       put it in terraform.tfvars as `tidb_password`, then re-run `terraform apply`
+    1. If you left tidb_password empty: set it in terraform.tfvars (TiDB Cloud
+       console -> Connect -> reset password) and re-run `terraform apply`
        (re-renders .env on the box and starts the app).
-    2. Verify on the box:  ${aws_lightsail_instance.shiba.username}@${aws_lightsail_instance.shiba.public_ip_address}
-                           cd /opt/shiba/app && docker compose ps && docker compose logs -f
-    3. Message your Telegram bot, then send the one-time owner code printed in the logs.
+    2. SSH to the box:  ${aws_lightsail_instance.shiba.username}@${aws_lightsail_instance.shiba.public_ip_address}
+                        cd /opt/shiba/app && sudo docker compose up -d --build
+                        sudo docker compose run --rm app node dist/main.js migrate
+    3. Message your Telegram bot, then send the one-time owner code from:
+                        sudo docker compose logs app | grep "owner setup code"
     ─────────────────────────────────────────────────────────────────────────
   EOT
 }

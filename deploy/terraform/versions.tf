@@ -1,5 +1,6 @@
 # SHIBA infrastructure — provider/version constraints.
-# Two providers, one `terraform apply`: AWS (Lightsail VPS) + TiDB Cloud (free Starter index).
+# Only AWS (Lightsail VPS) is managed by Terraform. The TiDB Cloud Starter cluster is
+# created manually in the console (see README) and passed in via the tidb_* variables.
 terraform {
   required_version = ">= 1.6"
 
@@ -7,12 +8,6 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = ">= 5.60"
-    }
-    # PingCAP official provider. `tidbcloud_serverless_cluster` (= Starter tier)
-    # is available from v0.4.0. Run `terraform init` then pin to the latest you resolve.
-    tidbcloud = {
-      source  = "tidbcloud/tidbcloud"
-      version = ">= 0.4.0"
     }
   }
 }

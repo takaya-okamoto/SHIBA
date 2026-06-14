@@ -31,25 +31,16 @@ variable "instance_name" {
   default     = "shiba"
 }
 
-variable "tidb_region_id" {
-  description = "TiDB Cloud serverless region id. AWS Tokyo = aws-ap-northeast-1."
-  type        = string
-  default     = "aws-ap-northeast-1"
-}
-
-variable "tidb_cluster_name" {
-  description = "Display name of the TiDB Cloud Starter cluster."
-  type        = string
-  default     = "shiba"
-}
-
 variable "tidb_database" {
   description = "Database (schema) name SHIBA uses inside the cluster."
   type        = string
   default     = "shiba"
 }
 
-# The cluster is managed outside Terraform (see main.tf). Pass its connection details:
+# ---------------------------------------------------------------------------
+# TiDB Cloud — the cluster is created MANUALLY in the console (NOT by Terraform;
+# see main.tf / README). Pass its Connect-dialog connection details here.
+# ---------------------------------------------------------------------------
 variable "tidb_host" {
   description = "TiDB cluster host (Connect dialog), e.g. gateway01.ap-northeast-1.prod.aws.tidbcloud.com."
   type        = string
@@ -66,6 +57,13 @@ variable "tidb_port" {
   description = "TiDB port."
   type        = number
   default     = 4000
+}
+
+variable "tidb_password" {
+  description = "TiDB SQL password (Connect dialog -> Generate/Reset password). May be empty on the first apply; the box skips 'docker compose up' until it is present, then re-apply."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 # ---------------------------------------------------------------------------
@@ -104,18 +102,6 @@ variable "memory_git_remote" {
 # Secrets — supply via terraform.tfvars (gitignored) or env TF_VAR_*.
 # These end up in tfstate and in Lightsail user_data; keep state private (see README).
 # ---------------------------------------------------------------------------
-variable "tidb_api_public_key" {
-  description = "TiDB Cloud API key (public part)."
-  type        = string
-  sensitive   = true
-}
-
-variable "tidb_api_private_key" {
-  description = "TiDB Cloud API key (private part)."
-  type        = string
-  sensitive   = true
-}
-
 variable "telegram_bot_token" {
   description = "Bot token from @BotFather. There is NO Terraform for Telegram — create the bot manually first."
   type        = string
@@ -123,7 +109,7 @@ variable "telegram_bot_token" {
 }
 
 variable "model_provider" {
-  description = "LLM provider: 'bedrock' (keyless via instance IAM role — option B) or 'anthropic' (API key)."
+  description = "LLM provider: 'bedrock' (Amazon Bedrock via IAM user access keys) or 'anthropic' (Anthropic API key)."
   type        = string
   default     = "bedrock"
   validation {
@@ -133,39 +119,44 @@ variable "model_provider" {
 }
 
 variable "anthropic_api_key" {
-  description = "Anthropic API key. Only needed when model_provider = \"anthropic\"; leave empty for keyless Bedrock (option B)."
+  description = "Anthropic API key. Only needed when model_provider = \"anthropic\"; leave empty for Bedrock."
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "manage_bedrock_role" {
-  description = "Whether Terraform creates the Bedrock IAM role. Set FALSE for Lightsail (the role needs the instance-id-specific trust policy, created manually post-instance — see LEARNINGS). Keeps model_provider=bedrock."
-  type        = bool
-  default     = true
+# Bedrock auth = IAM user access keys. Keyless (the instance assuming an IAM role via IMDS)
+# is NOT possible on a plain Lightsail instance: its IMDS identity is the AWS-account-owned
+# AmazonLightsailInstanceRole, which we cannot grant cross-account AssumeRole on (see LEARNINGS).
+# Create an IAM user with bedrock:InvokeModel[WithResponseStream] and paste its keys here.
+variable "aws_access_key_id" {
+  description = "IAM user access key id for runtime Bedrock (model_provider=bedrock). Written to the box's .env; the app's AnthropicBedrock SDK reads it from the environment."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "aws_secret_access_key" {
+  description = "IAM user secret access key for runtime Bedrock (model_provider=bedrock). Written to the box's .env."
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 variable "bedrock_response_model" {
-  description = "Bedrock model / inference-profile id for responses (region-specific, e.g. apac.anthropic.claude-sonnet-4-...). Required when model_provider = \"bedrock\"."
+  description = "Bedrock inference-profile id for responses. Tokyo uses the jp. prefix, e.g. jp.anthropic.claude-sonnet-4-5-20250929-v1:0. Required when model_provider = \"bedrock\". Claude 4.x needs an inference profile (on-demand unsupported); confirm real ids via `aws bedrock list-inference-profiles`."
   type        = string
   default     = ""
 }
 
 variable "bedrock_extract_model" {
-  description = "Bedrock model / inference-profile id for extraction (e.g. apac.anthropic.claude-haiku-...). Required when model_provider = \"bedrock\"."
+  description = "Bedrock inference-profile id for extraction (a lighter Haiku jp. profile). Required when model_provider = \"bedrock\"."
   type        = string
   default     = ""
 }
 
 variable "gemini_api_key" {
   description = "Google Gemini API key — ONLY if you switch embedding to Gemini (BYOK). Empty = use the free managed Titan model (default), no key needed."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "tidb_password" {
-  description = "TiDB SQL password. The tidbcloud provider does NOT set this — leave empty on first apply, reset it in the TiDB Cloud console, then put it here and re-apply. See README 'Gotcha A'."
   type        = string
   sensitive   = true
   default     = ""
