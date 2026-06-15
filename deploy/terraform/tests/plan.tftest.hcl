@@ -5,7 +5,7 @@ mock_provider "aws" {}
 
 variables {
   ssh_public_key     = "ssh-ed25519 AAAATESTKEY you@host"
-  admin_ssh_cidr     = "203.0.113.4/32"
+  admin_ssh_cidr     = ["203.0.113.4/32"]
   telegram_bot_token = "123:abc"
 }
 

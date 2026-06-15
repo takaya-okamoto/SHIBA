@@ -75,8 +75,8 @@ variable "ssh_public_key" {
 }
 
 variable "admin_ssh_cidr" {
-  description = "CIDR allowed to reach SSH (port 22). Lock to your IP, e.g. 203.0.113.4/32. Telegram uses long polling, so NO inbound app port is opened."
-  type        = string
+  description = "CIDRs allowed to reach SSH (port 22). A list, so you can register multiple networks (home + office + phone), e.g. [\"203.0.113.4/32\", \"198.51.100.7/32\"]. IPs are usually dynamic — re-apply when one changes. Telegram uses long polling, so NO inbound app port is opened."
+  type        = list(string)
 }
 
 variable "shiba_repo_url" {
