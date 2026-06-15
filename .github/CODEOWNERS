@@ -1,0 +1,16 @@
+# Code owners — automatically requested as reviewers on matching pull requests.
+# Combined with branch protection ("require review from Code Owners"), this keeps
+# the listed paths under maintainer review.
+# Docs: https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything in the repository.
+*                   @takaya-okamoto
+
+# Security-critical surfaces — keep these strictly under maintainer review
+# (source_trust, sanitize/injection, secret redaction; see SECURITY.md / docs/98).
+/src/security/      @takaya-okamoto
+/SECURITY.md        @takaya-okamoto
+
+# Project plumbing: CI, governance, deploy/IaC.
+/.github/           @takaya-okamoto
+/deploy/            @takaya-okamoto
