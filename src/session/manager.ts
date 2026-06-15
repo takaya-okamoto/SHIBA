@@ -1,4 +1,7 @@
+import { type Provenance, trustForProvenance } from "../extract/extract.js";
 import type { LlmMessage } from "../llm/client.js";
+import type { SourceTrust } from "../types.js";
+import type { SessionPersistence } from "./persistence.js";
 import {
   type SessionPolicy,
   type SessionState,
@@ -9,12 +12,13 @@ import {
 
 /** The half of TurnLoop the manager needs: flush a closed session's transcript to memory. */
 export interface SessionSink {
-  closeSession(transcript: string, date: string): Promise<number>;
+  closeSession(transcript: string, date: string, provenance: Provenance): Promise<number>;
 }
 
 interface LiveSession {
   state: SessionState;
   turns: LlmMessage[]; // alternating user/assistant — short-term context for the next reply
+  inputs: { text: string; provenance: Provenance }[]; // owner messages + their provenance, for flush
 }
 
 /** Default number of recent messages handed back as short-term conversation context (15 exchanges). */
@@ -34,11 +38,28 @@ export class SessionManager {
     private sink: SessionSink,
     private policy: SessionPolicy = defaultPolicy,
     private now: () => number = Date.now,
+    private persist?: SessionPersistence,
   ) {}
 
+  /** Reload sessions left unflushed by a previous run (docs/94 A-1) so the next sweep still
+   *  extracts → remembers them. Short-term history isn't restored (a fresh topic is fine). */
+  async recover(): Promise<void> {
+    if (!this.persist) return;
+    for (const [userId, data] of await this.persist.loadAll()) {
+      if (this.sessions.has(userId)) continue;
+      this.sessions.set(userId, { state: data.state, turns: [], inputs: data.inputs });
+    }
+  }
+
   /** Record one exchange (owner message + assistant reply). Flushes the prior session first if it
-   *  has crossed its boundary, then appends to the current session. */
-  async record(userId: string, userText: string, assistantReply: string): Promise<void> {
+   *  has crossed its boundary, then appends to the current session. `provenance` rides with the
+   *  owner message so the boundary flush can clamp source_trust per span (docs/98 §3.5). */
+  async record(
+    userId: string,
+    userText: string,
+    assistantReply: string,
+    provenance: Provenance = "owner-typed",
+  ): Promise<void> {
     const t = this.now();
     const cur = this.sessions.get(userId);
     if (cur && shouldClose(cur.state, t, this.policy)) await this.flush(userId);
@@ -51,12 +72,24 @@ export class SessionManager {
       s.state.lastMessageAt = t;
       s.state.turnCount += 1;
       s.turns.push(...exchange);
+      s.inputs.push({ text: userText, provenance });
     } else {
       this.sessions.set(userId, {
         state: { startedAt: t, lastMessageAt: t, turnCount: 1 },
         turns: exchange,
+        inputs: [{ text: userText, provenance }],
       });
     }
+    this.savePersist(userId);
+  }
+
+  /** Fire-and-forget persist of the open session's flushable state (never delays a turn). */
+  private savePersist(userId: string): void {
+    const s = this.sessions.get(userId);
+    if (!this.persist || !s) return;
+    void this.persist
+      .save(userId, { userId, state: s.state, inputs: s.inputs })
+      .catch((e) => console.error("session persist:", (e as Error).message));
   }
 
   /** Last `n` conversation messages (user+assistant) for short-term context. Empty once the session
@@ -90,12 +123,24 @@ export class SessionManager {
     const s = this.sessions.get(userId);
     if (!s) return;
     this.sessions.delete(userId); // remove first so a failing flush can't loop on sweep
-    const ownerLines = s.turns.filter((m) => m.role === "user").map((m) => m.content);
-    if (ownerLines.length === 0) return;
-    try {
-      await this.sink.closeSession(ownerLines.join("\n"), toLocalDate(s.state.startedAt));
-    } catch (e) {
-      console.error("session flush failed:", (e as Error).message);
+    void this.persist?.remove(userId).catch(() => {}); // session no longer open — drop its state file
+    if (s.inputs.length === 0) return;
+    const date = toLocalDate(s.state.startedAt);
+    // Group owner inputs by trust so a forwarded/pasted span is extracted (and clamped to untrusted)
+    // separately from owner-typed text — never mixed into one trusted transcript (docs/98 §3.5).
+    const buckets = new Map<SourceTrust, { provenance: Provenance; texts: string[] }>();
+    for (const inp of s.inputs) {
+      const trust = trustForProvenance(inp.provenance);
+      const b = buckets.get(trust) ?? { provenance: inp.provenance, texts: [] };
+      b.texts.push(inp.text);
+      buckets.set(trust, b);
+    }
+    for (const b of buckets.values()) {
+      try {
+        await this.sink.closeSession(b.texts.join("\n"), date, b.provenance);
+      } catch (e) {
+        console.error("session flush failed:", (e as Error).message);
+      }
     }
   }
 }

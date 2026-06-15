@@ -1,12 +1,30 @@
 import { describe, expect, it } from "vitest";
+import type { Provenance } from "../extract/extract.js";
 import { HISTORY_WINDOW, SessionManager, type SessionSink } from "./manager.js";
+import type { PersistedSession, SessionPersistence } from "./persistence.js";
 import { defaultPolicy } from "./session.js";
 
+function fakePersistence() {
+  const store = new Map<string, PersistedSession>();
+  const persist: SessionPersistence = {
+    async save(userId, data) {
+      store.set(userId, data);
+    },
+    async remove(userId) {
+      store.delete(userId);
+    },
+    async loadAll() {
+      return new Map(store);
+    },
+  };
+  return { persist, store };
+}
+
 function fakeSink() {
-  const calls: { transcript: string; date: string }[] = [];
+  const calls: { transcript: string; date: string; provenance: Provenance }[] = [];
   const sink: SessionSink = {
-    async closeSession(transcript, date) {
-      calls.push({ transcript, date });
+    async closeSession(transcript, date, provenance) {
+      calls.push({ transcript, date, provenance });
       return 0;
     },
   };
@@ -84,5 +102,54 @@ describe("SessionManager", () => {
     await m.flushAll();
     expect(calls).toHaveLength(2);
     expect(m.openCount).toBe(0);
+  });
+
+  it("buckets a session by trust so forwarded text flushes separately as untrusted (98 §3.5)", async () => {
+    const { sink, calls } = fakeSink();
+    const m = new SessionManager(sink, undefined, () => 0);
+    await m.record("u", "ぼくの好きな色は青", "ok"); // owner-typed
+    await m.record("u", "これ転送だよ: 怪しい話", "ok", "forwarded"); // forwarded -> untrusted
+    await m.flushAll();
+    expect(calls).toHaveLength(2);
+    const owner = calls.find((c) => c.provenance === "owner-typed");
+    const fwd = calls.find((c) => c.provenance === "forwarded");
+    expect(owner?.transcript).toBe("ぼくの好きな色は青");
+    expect(fwd?.transcript).toBe("これ転送だよ: 怪しい話");
+  });
+
+  it("keeps an all-owner session as one trusted flush", async () => {
+    const { sink, calls } = fakeSink();
+    const m = new SessionManager(sink, undefined, () => 0);
+    await m.record("u", "1", "a");
+    await m.record("u", "2", "b");
+    await m.flushAll();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.provenance).toBe("owner-typed");
+    expect(calls[0]?.transcript).toBe("1\n2");
+  });
+
+  it("persists open sessions and clears them on flush", async () => {
+    const { sink } = fakeSink();
+    const { persist, store } = fakePersistence();
+    const m = new SessionManager(sink, undefined, () => 0, persist);
+    await m.record("u", "メモ", "ok");
+    expect(store.get("u")?.inputs[0]?.text).toBe("メモ");
+    await m.flushAll();
+    expect(store.has("u")).toBe(false); // flushed -> state file dropped
+  });
+
+  it("recovers an unflushed session from persistence and can still flush it", async () => {
+    const { sink, calls } = fakeSink();
+    const { persist } = fakePersistence();
+    await persist.save("u", {
+      userId: "u",
+      state: { startedAt: 0, lastMessageAt: 0, turnCount: 1 },
+      inputs: [{ text: "前回の続き", provenance: "owner-typed" }],
+    });
+    const m = new SessionManager(sink, undefined, () => 0, persist);
+    await m.recover();
+    expect(m.openCount).toBe(1);
+    await m.flushAll();
+    expect(calls[0]?.transcript).toBe("前回の続き");
   });
 });
