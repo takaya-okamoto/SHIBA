@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Telegram message streaming (openclaw #7123): the reply now appears progressively by editing one
+  message as it generates, instead of arriving all at once. The LLM client streams via the SDK's
+  `.stream()`/`finalMessage()` (Anthropic + Bedrock), threaded through `onDelta`; the Telegram adapter
+  throttles edits (~1/s, skip-unchanged, 4096-char cap) and falls back to a single reply for
+  commands/onboarding or if streaming is unavailable. Toggle: `streaming.enabled` / `STREAMING=off`.
 - Ingest hardening (`src/security/`): Unicode sanitize (zero-width/bidi/control strip, angle-bracket
   homoglyph normalize, ZWJ-safe) + injected-block stripping; secret/PII scrub (PEM/JWT/keys/Luhn
   cards/email/phone) on the memory path; always-on log redaction; injection-pattern detection

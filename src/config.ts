@@ -30,6 +30,12 @@ export interface Config {
     /** Scrub PII (email/phone) from the memory-storage path. Hard secrets are always scrubbed (§4.2). */
     scrubPii: boolean;
   };
+  /** Telegram streaming preview (openclaw #7123): edit one message as the answer grows. */
+  streaming: {
+    enabled: boolean;
+    /** Minimum ms between edits (Telegram rate-limit guard; clamped to >=250). */
+    throttleMs: number;
+  };
 }
 
 const defaults: Config = {
@@ -49,6 +55,10 @@ const defaults: Config = {
   digest: { enabled: true, hour: 8, quietStartHour: 22, quietEndHour: 7, tzOffsetMin: 540 },
   dream: { enabled: true, hour: 3, tzOffsetMin: 540 },
   security: { scrubPii: true },
+  streaming: {
+    enabled: process.env.STREAMING !== "off",
+    throttleMs: Number(process.env.STREAM_THROTTLE_MS ?? 1000),
+  },
 };
 
 /** Load config.yaml (behavior) merged over defaults. Secrets stay in .env (docs/92 §3). */
@@ -61,6 +71,7 @@ export function loadConfig(path = "config.yaml"): Config {
     digest: { ...defaults.digest, ...y.digest },
     dream: { ...defaults.dream, ...y.dream },
     security: { ...defaults.security, ...y.security },
+    streaming: { ...defaults.streaming, ...y.streaming },
   };
 }
 
