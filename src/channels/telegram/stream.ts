@@ -1,10 +1,10 @@
 /**
  * Telegram "streaming" = send one message, then throttled `editMessageText` as the answer grows
  * (openclaw #7123: "continuously edit the message while respecting rate limits"). Telegram has no
- * token stream, so this is the standard approach. Edits are coalesced (≈1/s), unchanged text is
- * skipped (Telegram 400s on a no-op edit), and the text is capped to Telegram's 4096-char limit.
- * Deliveries are serialized through a promise chain so edits never overlap; preview errors (rate
- * limits etc.) are swallowed — `finalize()` re-sends the exact final text so the end state is correct.
+ * token stream, so this is the standard approach. Edits are coalesced (~2/s by default), unchanged
+ * text is skipped (Telegram 400s on a no-op edit), and the text is capped to Telegram's 4096 limit.
+ * Deliveries are serialized through a promise chain so edits never overlap; on a 429 the stream backs
+ * off for retry_after; `finalize()` re-sends the exact final text so the end state is always correct.
  */
 
 export const TELEGRAM_MAX_CHARS = 4096;
@@ -41,6 +41,7 @@ export function createTelegramStream(
   let pending = "";
   let lastSent = "";
   let lastFlushAt = Number.NEGATIVE_INFINITY; // first delivery fires immediately
+  let cooldownUntil = 0; // honor Telegram 429 retry_after before the next edit
   let timer: ReturnType<typeof setTimeout> | undefined;
   let queue: Promise<void> = Promise.resolve();
 
@@ -56,8 +57,12 @@ export function createTelegramStream(
         await transport.edit(messageId, text);
       }
       lastSent = text;
-    } catch {
-      // best-effort preview; rate-limit / edit errors are ignored (finalize re-sends the final text)
+    } catch (e) {
+      // On Telegram 429, back off for the server-told retry_after so we don't hammer; other errors
+      // are transient preview failures (finalize re-sends the exact text either way).
+      const retryAfter = (e as { parameters?: { retry_after?: number } }).parameters?.retry_after;
+      if (typeof retryAfter === "number" && retryAfter > 0)
+        cooldownUntil = now() + retryAfter * 1000;
     }
   }
 
@@ -68,7 +73,7 @@ export function createTelegramStream(
 
   function schedule(): void {
     if (timer) return;
-    const wait = Math.max(0, throttleMs - (now() - lastFlushAt));
+    const wait = Math.max(0, throttleMs - (now() - lastFlushAt), cooldownUntil - now());
     timer = setTimeout(() => {
       timer = undefined;
       void enqueueDeliver().then(() => {
@@ -90,6 +95,12 @@ export function createTelegramStream(
         timer = undefined;
       }
       await enqueueDeliver();
+      // If the final edit was rate-limited, wait out the cooldown once so the exact text still lands.
+      const remaining = cooldownUntil - now();
+      if (remaining > 0 && capForTelegram(pending) !== lastSent) {
+        await new Promise((r) => setTimeout(r, Math.min(5000, remaining)));
+        await enqueueDeliver();
+      }
     },
     messageId: () => messageId,
   };
