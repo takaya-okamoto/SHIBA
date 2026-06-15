@@ -18,6 +18,24 @@ pnpm test        # vitest
 pnpm build       # tsc
 ```
 
+## 貢献の流れ（fork → PR）
+
+外部コントリビュータは `main` への直接 push 権限を持ちません。以下の fork ベースで進めます。
+
+1. このリポジトリを **fork**（右上の Fork ボタン）。
+2. fork を clone し、feature ブランチを切る:
+   ```bash
+   git clone git@github.com:<you>/SHIBA.git
+   cd SHIBA
+   git checkout -b fix/<short-topic>
+   ```
+3. 変更し、`pnpm typecheck && pnpm lint && pnpm test` が green であることを確認。
+4. push して、**自分の fork から `takaya-okamoto/SHIBA` の `main` に向けて PR** を作成。
+5. CI（typecheck / lint / test / build）が green になり、レビューが承認されるとマージされます。
+
+`main` は保護されており、**PR 経由かつ CI green でないとマージできません**（マージはメンテナが行います）。
+`CODEOWNERS` に該当するパスを変更した場合は、コードオーナーのレビューが自動でリクエストされます。
+
 ## 規約
 
 - **言語**: ソースコード・コメント・コミットメッセージ・issue / PR は**英語**で書きます
