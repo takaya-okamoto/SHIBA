@@ -47,10 +47,14 @@ export async function migrate(): Promise<void> {
       await conn.query(stmt);
       console.log(`  ok  ${head}`);
     } catch (e) {
-      // FULLTEXT index may already exist (no IF NOT EXISTS) — tolerate on re-run.
+      // A FULLTEXT index has no IF NOT EXISTS, so re-running migrate re-issues it. TiDB reports an
+      // existing one as "Duplicate key name" (errno 1061), older/other engines as "already exists" —
+      // tolerate both so a re-run reaches the newer tables (meta / st_*) instead of aborting here.
       const msg = (e as Error).message;
-      if (/already exist/i.test(msg)) console.log(`  skip ${head} (exists)`);
-      else {
+      const errno = (e as { errno?: number }).errno;
+      if (/already exist/i.test(msg) || /duplicate key name/i.test(msg) || errno === 1061) {
+        console.log(`  skip ${head} (exists)`);
+      } else {
         console.error(`  ERR ${head}\n      ${msg}`);
         throw e;
       }
