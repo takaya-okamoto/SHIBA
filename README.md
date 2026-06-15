@@ -1,200 +1,125 @@
 <p align="center">
   <strong>🐕 SHIBA</strong><br/>
-  <em>あなたのことを覚えている、自分専用のAIエージェント。</em><br/>
-  Telegramで話すだけ。記憶はあなたのサーバーに、あなたのものとして残る。
+  <em>Your own AI agent that actually remembers you.</em><br/>
+  Just talk on Telegram. Your memory lives on your server, as yours.
 </p>
 
 <p align="center">
-  Self-hosted personal memory agent — persistent, human-readable memory, over Telegram.<br/>
-  <em>(English README is planned. 現状このREADMEは日本語です。ソースコード・コメントは英語で書きます。)</em>
+  English ·  <a href="README.ja.md">日本語</a>
 </p>
 
 ---
 
-## SHIBAとは
+## What is SHIBA?
 
-SHIBAは、**セルフホスト型の個人用メモリエージェント**です。
+SHIBA is a **self-hosted personal memory agent**.
 
-- **覚える** — Telegramでの会話から大事なことを自動で記憶し、セッションやデバイスを跨いで思い出します。
-- **思い出す** — ベクトル + 全文のハイブリッド検索で、必要なときに必要な記憶だけを返します(日本語ファーストクラス)。
-- **あなたのもの** — 記憶は**あなたのサーバー(AWS Lightsail)とあなたのGitHubリポジトリ**に、人間が読めるMarkdownとして保存。ベンダーロックなし、いつでもエクスポート可能。
-- **Telegramに住む** — 専用アプリを入れる必要はありません。Telegramがそのままインターフェイスです。公開ドメインも不要(long pollingで動く)。
+- **Remembers** — automatically captures what matters from your Telegram chats and recalls it across sessions and devices.
+- **Recalls** — hybrid vector + full-text search returns just the memories you need, when you need them (Japanese is first-class).
+- **Yours** — memory is stored as human-readable Markdown on **your server (AWS Lightsail) and your GitHub repo**. No vendor lock-in; export anytime.
+- **Lives in Telegram** — no app to install; Telegram *is* the interface. No public domain needed (it runs on long polling).
 
-> **v1のスコープは「記憶」だけ**です。メール返信・カレンダー登録などの**外向きの「行動」はv1には含めません**(将来の段階で、安全要件が揃ってから導入します)。これにより v1 は *lethal trifecta*(私的データ × 信頼できない外部入力 × 行動能力)を**構造的に持ちません** — 下の「セキュリティ」参照。
-
----
-
-## クイックスタート
-
-ゼロから Telegram で会話できるようになるまでの**具体的な手順**は **[`docs/QUICKSTART_JA.md`](docs/QUICKSTART_JA.md)** にまとめてあります(所要 30〜60分)。
+> **v1 scope is memory only.** Outward **actions** (replying to email, creating calendar events) are **not** in v1 — they come in a later phase, once the safety requirements are in place. As a result v1 structurally **does not have the *lethal trifecta*** (private data × untrusted input × the ability to act) — see [Security](#security).
 
 ---
 
-## システム構成図
+## Quickstart
 
-```
-                            ┌──────────────┐
-                            │   あなた      │   📱 Telegram
-                            │  (オーナー)    │   (メッセージ / 画像 / 音声)
-                            └──────┬───────┘
-                                   │
-                                   ▼
-                       ┌───────────────────────┐
-                       │   Telegram Bot API      │   long polling(既定・公開不要)
-                       │   または webhook(任意)   │   完全無料 / 送信上限なし
-                       └───────────┬────────────┘
-                                   │ getUpdates(outbound)/ または署名付きwebhook
-                                   ▼
- ┌──────────────────────────────────────────────────────────────────────┐
- │  AWS Lightsail(東京・常駐VPS / 4GB)        ◀── SHIBA本体が24時間動く     │
- │                                                                        │
- │   SHIBA app(常駐プロセス)                                              │
- │     ├ Channel Adapter   : Telegram の入出力(LINE は将来の追加アダプタ)   │
- │     ├ Turn Loop         : ユーザ毎に直列・応答生成(60秒制約なし)        │
- │     └ Background Worker  : 記憶抽出 / 整理(dreaming) / 朝のダイジェスト   │
- │                                                                        │
- │   📁 data/memory/   ◀── 【真実の源】Markdown + git(人間が読める記憶)      │
- │   📁 data/state/    ◀── セッション履歴(JSONL)・ローカル状態              │
- └───────┬─────────────────────────┬───────────────────────┬─────────────┘
-         │                         │                       │
-         ▼                         ▼                       ▼
- ┌──────────────┐         ┌────────────────┐       ┌────────────────┐
- │ TiDB Cloud    │         │ LLM            │       │ GitHub         │
- │ Starter(無料) │         │ Anthropic API  │       │ (private repo) │
- │ 【派生索引】    │         │  or Bedrock    │       │ 記憶のオフサイト │
- │ vector + 全文  │         │ 応答 / 抽出 /   │       │ バックアップ     │
- │ + 自動embed +  │         │ 夜間バッチ      │       │ (git push)     │
- │ state         │         │                │       │                │
- └──────────────┘         └────────────────┘       └────────────────┘
-   ↑ 検索のための索引。            ↑ 文章生成・            ↑ Lightsailが飛んでも
-   DROPしても data/memory から    記憶抽出のみ。          記憶はここから復元。
-   reindex で完全復元できる。      本文を送る。
+The full step-by-step setup (≈30–60 min, from zero to chatting on Telegram) is in **[`docs/QUICKSTART_JA.md`](docs/QUICKSTART_JA.md)** (Japanese). Deploy runbook: **[`deploy/terraform/README.md`](deploy/terraform/README.md)**.
+
+```bash
+cp .env.example .env        # fill in Telegram / model / TiDB credentials
+docker compose up -d        # one resident process; long polling, no inbound ports
+# then DM the bot the one-time owner code from the logs to register.
 ```
 
 ---
 
-## 各サービスの役割
+## Architecture
 
-| サービス | 役割 | 何が保存されるか |
+```
+   You (owner) ── 📱 Telegram ──► Telegram Bot API (long polling; free, no public endpoint)
+                                          │
+                                          ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │  AWS Lightsail (resident 24/7 VPS, 4GB)   ◀── the SHIBA app runs here │
+   │    ├ Channel Adapter : Telegram I/O                                  │
+   │    ├ Turn Loop       : per-user serial reply generation             │
+   │    └ Background Worker: extraction / dreaming / morning digest      │
+   │    📁 data/memory/  ◀── SOURCE OF TRUTH: Markdown + git             │
+   │    📁 data/state/   ◀── session transcripts (JSONL) + local state    │
+   └───────┬──────────────────────┬─────────────────────┬──────────────┘
+           ▼                      ▼                     ▼
+     TiDB Cloud Starter      LLM (Anthropic        GitHub (private repo)
+     DERIVED INDEX           API or Bedrock)       offsite memory backup
+     vector + full-text      reply / extract /     (git push)
+     + auto-embed + state    nightly batch
+       ↑ rebuildable from data/memory via `reindex --all`
+```
+
+| Service | Role | Stores |
 |---|---|---|
-| **Telegram Bot API** | 日常の入出力。メッセージ受信(long polling 既定 / webhook 任意)、返信送信。**完全無料・送信上限なし・公開ドメイン不要** | — |
-| **AWS Lightsail**(常駐VPS) | SHIBA本体が24時間動く場所。**記憶の真実の源(Markdown+git)をローカルディスクに保持** | `data/memory/`(記憶)・`data/state/`(セッション履歴・状態) |
-| **TiDB Cloud Starter** | **派生索引**。ハイブリッド検索(ベクトル + 全文)、DB内自動embedding、fact行の状態管理。**消しても `reindex` で再構築可能** | `chunks` / `facts` / `entities` / `fact_entities` |
-| **LLM**(Anthropic API または Amazon Bedrock) | 応答生成・記憶の抽出/統合・夜間バッチ。**本文を送信するのみ(保存はしない)** | — |
-| **GitHub**(private repo) | 記憶 git リポジトリの**オフサイトバックアップ**。Lightsailが消えても記憶を復元できる | `data/memory/` のミラー |
+| **Telegram Bot API** | Day-to-day I/O (long polling default / webhook optional). Free, no send cap, no public domain. | — |
+| **AWS Lightsail** (resident VPS) | Where SHIBA runs 24/7; holds the **source of truth** (Markdown + git) on local disk. | `data/memory/`, `data/state/` |
+| **TiDB Cloud Starter** | **Derived index**: hybrid search (vector + full-text), in-DB auto-embedding, fact state. **Drop it and `reindex` rebuilds it.** | `chunks` / `facts` / `entities` / `fact_entities` |
+| **LLM** (Anthropic API or Amazon Bedrock) | Reply generation, extraction/reconcile, nightly batch. **Sends text only; stores nothing.** | — |
+| **GitHub** (private repo) | Offsite backup of the memory git repo. | mirror of `data/memory/` |
 
-> 外部データ(Gmail / Google Calendar 等)の**取り込み**と、外向きの**行動**(返信・登録)は v1 スコープ外です(v2+ で導入予定)。
-
----
-
-## データはどこに保存されるか
-
-SHIBAは「**真実の源**」と「**派生・再構築できるもの**」を明確に分けています。
-
-| 種別 | 場所 | 内容 | 失ったら |
-|---|---|---|---|
-| 🟢 **真実の源**(source of record) | Lightsail ローカルディスク `data/memory/`(git管理)+ あなたのGitHub private repo | `MEMORY.md`(常駐記憶)/ `memory/YYYY-MM-DD.md`(日次ノート + facts)/ `profile.md` | **致命的** → GitHubから復元 |
-| 🔵 **派生索引**(disposable) | TiDB Cloud Starter | 検索用の `chunks` / `facts`(ベクトル・全文索引・state・**source_trust**)| `reindex --all` で `data/memory` から完全再構築 |
-| 🟡 **状態**(再構築不能) | TiDB `st_*` テーブル + 週次JSONLスナップショット | recall統計 / メトリクス / フィードバック | 消失許容(数週間で再蓄積) |
-| ⚪ **会話履歴** | Lightsail ローカル `data/state/sessions/`(JSONL) | セッションのトランスクリプト | 過去会話検索が失われるのみ |
-| 🔴 **秘密情報** | `.env`(権限0600) | API キー・トークン | コード・記憶・ログには**決して入れない** |
-
-> **設計思想**: 記憶は**人間が読めるMarkdown**であり、**gitで履歴が残り、いつでも他へエクスポートできる**。データベース(TiDB)はあくまで「速く検索するための索引」で、捨てても記憶そのものは失われません。
-
-📖 **実際にどう保存されるかの具体例**(1本の会話を追って Markdown と TiDB の中身を見る)→ [`docs/data-storage.md`](docs/data-storage.md)
+> Ingesting external data (Gmail / Calendar) and outward actions are out of scope for v1 (planned for v2+).
 
 ---
 
-## 💰 月額コスト
+## Cost
 
-**個人利用(1日20ターン程度)の目安: 約 $35〜45 / 月**。内訳:
-
-| サービス | プラン | 月額 |
-|---|---|---|
-| **AWS Lightsail** | 4GBプラン(推奨。AWS公式もOpenClaw向けに4GB推奨) | **約 $20〜24** |
-| TiDB Cloud Starter | 無料枠(5GiB行 + 5GiB列 + 50M RU/月) | **$0** |
-| Telegram Bot API | 完全無料(送信上限なし) | **$0** |
-| **LLM**(Anthropic API or Bedrock) | 約600ターン/月(Sonnet応答 + Haiku抽出 + 夜間バッチ) | **約 $20** |
-| embedding | TiDB自動embedding(既定 = 無料の Titan / GeminiにBYOK切替も可) | **$0〜<$1** |
-| GitHub | 無料枠内 | **$0** |
-| **合計** | | **約 $35〜45 / 月** |
-
-**コストを下げるには:**
-- Lightsailを **2GBプラン(約$12/月)** に。SHIBAはベクトル計算・embedding・LLMを全て外部に逃がすので、最小構成でも動きます → 合計 **$30/月台前半**。
-- LLMをデフォルトの **Sonnet** のままにする(Opus主力にすると LLM が ~$27/月に上昇)。
-- **Amazon Bedrock** を使えば、課金・認証を AWS に集約できます(認証は IAM ユーザーのアクセスキー。コストはほぼ同等)。
-
-> 注: 料金は2026-06時点の概算です。Lightsail / LLM の最新料金で必ず確認してください。LLMコストは使用量とモデル選択に比例します。
+Personal use (~20 turns/day): **roughly $35–45 / month** — Lightsail 4GB (~$20–24), LLM (~$20), TiDB Starter / Telegram / GitHub free. Drop to a 2GB box (~$12) for ~$30s/mo. (2026-06 estimate; verify current pricing.)
 
 ---
 
-## セキュリティ — 「LLMは乗っ取られる前提」で設計
+## Security
 
-**v1 は外向きの行動を一切しません**(メール送信・カレンダー登録なし)。外部データの自動取り込みもありません。したがって v1 は *lethal trifecta*(私的データ × 信頼できない外部入力 × **行動能力**)の3本目の脚を**構造的に持たず**、「受信メールの指示であなたの名義で勝手に行動する」類の攻撃は**そもそも成立しません**。行動を足す将来段階の設計は v2+ に分離してあります。
+Designed on the assumption that **the LLM can be hijacked**, so boundaries are enforced **structurally, not by trusting the model**:
 
-その上で SHIBA は、**LLMの賢さに頼らず、構造で**境界を守ります:
+- **v1 takes no outward actions and ingests no external data** — the third leg of the *lethal trifecta* is structurally absent, so "an email instructs the agent to act as you" attacks simply can't occur.
+- **Access boundary (default deny)** — only the registered owner's messages touch memory; owner registration uses a one-time code.
+- **Prompt-injection defense** — external text (forwarded / pasted / OCR) is wrapped in `<untrusted_input>` (data, not instructions), with input+output sanitization, Unicode normalization, and Japanese paraphrase patterns.
+- **Memory-laundering defense (`source_trust`)** — facts extracted from forwarded/pasted/OCR'd text are marked `untrusted`: never auto-promoted to resident memory, demoted + labeled on recall, never a trigger for (future) actions. Only an explicit `/remember` promotes to trusted.
+- **Secret handling (three layers)** — "store the fact, not the value" prompting, pre-ingest PII/secret scrub (Luhn-checked), and import-time log redaction that can't be disabled at runtime.
+- **No telemetry** — the only outbound traffic is to the services you configure (LLM / TiDB / Telegram).
 
-- **アクセス境界(既定deny)** — Telegram は誰でも bot に話しかけられるため、**登録されたオーナー以外のメッセージは記憶に触れさせません**。オーナー登録は起動時のワンタイムコード方式。
-- **プロンプトインジェクション防御** — 外部由来テキスト(転送・貼り付け・画像OCR・将来の検索結果)は `<untrusted_input>` で「データであって命令ではない」と構造的に囲い、入り口と出口で二重サニタイズ + Unicode正規化(日本語の言い換えパターンも対象)。
-- **記憶の汚染ロンダリング防御(source_trust)** — あなたが貼り付け・転送・OCRした**他人由来のテキストから抽出された事実**には `source_trust=untrusted` を刻みます。これらは**常駐記憶(MEMORY.md)へ自動昇格されず**、想起時は信頼済み記憶と区別して降格・明示ラベルし、将来の行動の引き金には**決して**なりません。`/remember` で明示的に承認したものだけが信頼済みに昇格します。攻撃者が「正当な好み」を装った事実を記憶に植え、後から信頼済みとして悪用する経路を断ちます。
-- **秘密情報の三層防御** — 抽出プロンプトで「値でなく事実」、入力前のPII/secret scrub(Luhn検証付き)、ログredaction(import時固定で無効化不可)。
-- **テレメトリなし** — 外部送信はあなたが設定したサービス(LLM/TiDB/Telegram)のみ。
-
-セキュリティ方針と脆弱性報告の手順は [`SECURITY.md`](SECURITY.md) を参照してください。
-
----
-
-## 主な機能
-
-- 🧠 **永続記憶** — 会話から事実を抽出し、矛盾は統合(ADD/UPDATE/DELETE)、間隔を空けて思い出されたものは長期記憶に昇格(spaced-repetition)。
-- 🔍 **ハイブリッド検索** — ベクトル + 全文(BM25)を融合。日本語ファーストクラス。繋がり(entity)で精度を底上げ。
-- ☀️ **朝のダイジェスト** — 昨日のハイライト・今日に関わる約束・放置中の約束を毎朝。
-- ⏳ **時間を理解** — 「昨日」「先週末」を絶対日付に解決。「いつの話だっけ?」に答えられる。
-- 🔒 **プライベート** — あなたのインフラ、あなたのデータ。
+See [`SECURITY.md`](SECURITY.md) for the policy and vulnerability reporting.
 
 ---
 
-## セットアップ(概要)
+## Features
 
-> ⚡ 具体的な手順は **[`docs/QUICKSTART_JA.md`](docs/QUICKSTART_JA.md)** にあります。全体の流れ:
+- 🧠 **Persistent memory** — extracts facts from conversation, reconciles contradictions (ADD/UPDATE/DELETE), promotes spaced-repetition recalls to long-term memory.
+- 🔍 **Hybrid search** — vector + full-text (BM25) fused, Japanese-first, with entity connections boosting precision.
+- ☀️ **Morning digest** — yesterday's highlights, today's and overdue commitments.
+- ⏳ **Time-aware** — resolves "yesterday" / "last weekend" to absolute dates.
+- 🔒 **Private** — your infra, your data.
 
-1. **AWS Lightsail** インスタンスを作成(東京、4GB)。
-2. **TiDB Cloud Starter** クラスタを作成(無料、東京)、接続情報を取得。
-3. **Telegram bot** を [@BotFather](https://t.me/BotFather) で作成し、bot token を取得(公開ドメイン不要 — long polling で動きます)。
-4. **記憶用のGitHub private repo** を作成(オフサイトバックアップ)。
-5. `.env` に各認証情報を設定し、`docker compose up`。
-6. bot に話しかけ → 起動ログのワンタイムコードを送ってオーナー登録 → 会話開始。
+## Owner commands (Telegram)
 
-> SHIBAは `docker compose up` + `.env` 記入だけで、「話す → 覚える → 翌日思い出す」が**全機能デフォルトONで動く**ことを出荷基準にします。
-
----
-
-## 技術スタック
-
-- **言語/ランタイム**: TypeScript + Node.js 22 LTS + pnpm
-- **ホスティング**: AWS Lightsail(常駐VPS、Docker Compose)
-- **索引DB**: TiDB Cloud Starter(MySQL互換、ベクトル + 全文検索 + 自動embedding)
-- **記憶ストア**: Markdown + git(真実の源)+ GitHub private repo(バックアップ)
-- **インターフェイス**: Telegram(本番)。LINE は将来の追加 ChannelAdapter
-- **LLM**: Anthropic API または Amazon Bedrock(Claude)
-- **ライセンス**: Apache-2.0
+`/help` · `/search <q>` · `/remember <x>` · `/forget <x>` · `/status` · `/pause` · `/resume`. Conversation is captured automatically; commands are for explicit control and are never stored as memory.
 
 ---
 
-## Contributing / Development
+## Tech stack
 
-- **プロジェクトの言語は英語**: ソースコード・コメント・コミットメッセージ・課題は英語で書きます。ドキュメントは日本語のものもあります(本READMEは現状日本語、後で英語化予定)。
-- 開発手順・コーディング規約は [`CONTRIBUTING.md`](CONTRIBUTING.md) を参照。
-- セキュリティ方針・脆弱性報告は [`SECURITY.md`](SECURITY.md)、行動規範は [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)、変更履歴は [`CHANGELOG.md`](CHANGELOG.md)。
+TypeScript + Node 22 + pnpm · AWS Lightsail (Docker Compose) · TiDB Cloud Starter (MySQL-compatible, vector + full-text + auto-embed) · Markdown + git (source of truth) + GitHub backup · Telegram · Anthropic API or Amazon Bedrock (Claude) · Apache-2.0.
 
----
-
-## ライセンス
-
-Apache License 2.0 — 詳細は [`LICENSE`](LICENSE) / [`NOTICE`](NOTICE)。
+Design rationale (why TiDB, why a resident VPS, why Markdown-as-truth, why ADD + background reconcile) is recorded in [`docs/adr/`](docs/adr/).
 
 ---
 
-## 名前の由来
+## Contributing
 
-**SHIBA** は柴犬(Shiba Inu)から。忠実で、賢く、あなたのそばにいて、あなたのことをちゃんと覚えている。🐕
+The project language is **English** (code, comments, commits, issues; some docs are Japanese). See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md), and [`CHANGELOG.md`](CHANGELOG.md).
+
+## License
+
+Apache License 2.0 — see [`LICENSE`](LICENSE) / [`NOTICE`](NOTICE).
+
+## Why "SHIBA"?
+
+After the Shiba Inu 🐕 — loyal, smart, by your side, and it remembers you. The detailed Japanese README is at [`README.ja.md`](README.ja.md).

@@ -1,9 +1,11 @@
 # Telegram uses long polling => NO inbound ports are published (docs/91 §1, 98 §1.2).
+# Bedrock auth = IAM user access keys in .env (keyless via an instance role is NOT possible on a plain
+# Lightsail box — deploy/terraform/README.md Gotcha B). No ~/.aws mount is needed: the AWS SDK reads
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY straight from the environment.
 services:
   app:
     build: .
     env_file: .env
     volumes:
       - ./data:/app/data                        # source of truth (Markdown+git) + local state
-      - /home/ubuntu/.aws:/home/node/.aws:ro    # keyless Bedrock: instance-role config (option B; IMDS)
     restart: unless-stopped

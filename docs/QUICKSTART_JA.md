@@ -204,7 +204,13 @@ sudo docker compose exec -T app node --input-type=module -e \
 
 ---
 
+## 記憶のされ方（v1 時点）
+
+- 会話 → メモリの**自動書き込み**は配線済み（Step 3c）。セッション境界（無応答4時間 / 毎朝4時 / 50ターン）で `closeSession` が発火し、抽出 → reconcile → Markdown へ書き込み → `reindex` まで自動で走ります。明示操作は `/remember`・`/forget` も使えます。
+- セッションは再起動を跨いで復元されます（未フラッシュの会話は次回の sweep で記憶化）。
+- Markdown に手で書いた記憶は `reindex --all` で TiDB に反映され、recall されます。
+
 ## 既知の TODO（v1 時点）
 
-- 会話 → メモリの**自動書き込み**（`closeSession` の自動トリガ＝Step 3c）はまだ未配線。現状は「賢く応答するが、まだ自動では記憶しない」状態。
-- Markdown に手で書いた記憶は `reindex --all` で TiDB に反映され、recall されます。
+- 画像 OCR（vision）/ 音声 STT は未対応（画像・音声は「まだ読めない」と応答）。
+- 夜間バッチ（Batches API）/ 月額予算ガード / 評価ハーネスは後続。

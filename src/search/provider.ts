@@ -1,8 +1,9 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
+import { config } from "../config.js";
 import { getPool } from "../index/db.js";
 import { type EmbeddingProvider, getEmbeddingProvider } from "../index/embed.js";
 import type { FactKind, SourceTrust } from "../types.js";
-import { ftsLiteral } from "./fts.js";
+import { ftsLiteral, likePattern } from "./fts.js";
 
 export interface RouteHit {
   id: string;
@@ -17,6 +18,10 @@ export interface SearchProvider {
   vectorRoute(query: string, k: number): Promise<RouteHit[]>;
   ftsRoute(query: string, k: number): Promise<RouteHit[]>;
   entityRoute(entityId: string, query: string, k: number): Promise<RouteHit[]>;
+  /** Vector route over Markdown chunks (prose memos, not just fenced facts) — docs/91 §2.2-2.3. */
+  chunkVectorRoute(query: string, k: number): Promise<RouteHit[]>;
+  /** Keyword route over chunks. */
+  chunkFtsRoute(query: string, k: number): Promise<RouteHit[]>;
 }
 
 interface FactRow extends RowDataPacket {
@@ -38,16 +43,37 @@ const toHits = (rows: FactRow[]): RouteHit[] =>
     distance: r.d ?? undefined,
   }));
 
+interface ChunkRow extends RowDataPacket {
+  id: string;
+  content: string;
+  source_trust: SourceTrust;
+  d: number | null;
+}
+
+// Chunk ids are namespaced (`c:`) so they can't collide with fact ids during RRF fusion. Chunks have
+// no fact `kind`, so recency decay (which keys on dated kinds) leaves them untouched — correct, a
+// prose memo isn't a dated fact.
+const chunkToHits = (rows: ChunkRow[]): RouteHit[] =>
+  rows.map((r) => ({
+    id: `c:${r.id}`,
+    claim: r.content,
+    sourceTrust: r.source_trust,
+    distance: r.d ?? undefined,
+  }));
+
 /**
- * TiDB-backed routes (validated by poc/tidb on Tokyo Starter). All routes query `facts`.
- * `SearchProvider` is the swap point for a LIKE fallback if FTS preview misbehaves (docs/91 §2.4-4).
+ * TiDB-backed routes (validated by poc/tidb on Tokyo Starter). Fact routes query `facts`; chunk
+ * routes query `chunks` (prose memos). The keyword routes honor `config.search.ftsMode` so a LIKE
+ * substring fallback can replace FTS preview if it misbehaves (docs/91 §2.4-4).
  */
 export class TidbSearchProvider implements SearchProvider {
   private pool: Pool;
   private embed: EmbeddingProvider;
+  private likeMode: boolean;
   constructor() {
     this.pool = getPool();
     this.embed = getEmbeddingProvider();
+    this.likeMode = config.search.ftsMode === "like";
   }
 
   // text-route A — vector over active facts. The distance expr is byte-identical in SELECT and
@@ -65,7 +91,16 @@ export class TidbSearchProvider implements SearchProvider {
   }
 
   // text-route B — full-text. FTS_MATCH_WORD needs a constant -> inline + escape (98 §6).
+  // LIKE mode is the bound-param substring fallback (docs/91 §2.4-4).
   async ftsRoute(query: string, k: number): Promise<RouteHit[]> {
+    if (this.likeMode) {
+      const [rows] = await this.pool.query<FactRow[]>(
+        `SELECT id, claim, source_trust, kind, recorded_at, NULL AS d
+           FROM facts WHERE state = 'active' AND claim LIKE ? ESCAPE '\\' LIMIT ?`,
+        [likePattern(query), k],
+      );
+      return toHits(rows);
+    }
     const lit = ftsLiteral(query);
     const [rows] = await this.pool.query<FactRow[]>(
       `SELECT id, claim, source_trust, kind, recorded_at, NULL AS d
@@ -75,6 +110,37 @@ export class TidbSearchProvider implements SearchProvider {
       [k],
     );
     return toHits(rows);
+  }
+
+  // chunk text-route A — vector over Markdown chunks (prose memos).
+  async chunkVectorRoute(query: string, k: number): Promise<RouteHit[]> {
+    const dist = this.embed.distanceExpr("embedding");
+    const p = this.embed.distanceParams(query);
+    const [rows] = await this.pool.query<ChunkRow[]>(
+      `SELECT id, content, source_trust, ${dist} AS d
+         FROM chunks ORDER BY ${dist} LIMIT ?`,
+      [...p, ...p, k],
+    );
+    return chunkToHits(rows);
+  }
+
+  // chunk keyword-route — FTS (or LIKE fallback) over chunk content.
+  async chunkFtsRoute(query: string, k: number): Promise<RouteHit[]> {
+    if (this.likeMode) {
+      const [rows] = await this.pool.query<ChunkRow[]>(
+        `SELECT id, content, source_trust, NULL AS d FROM chunks WHERE content LIKE ? ESCAPE '\\' LIMIT ?`,
+        [likePattern(query), k],
+      );
+      return chunkToHits(rows);
+    }
+    const lit = ftsLiteral(query);
+    const [rows] = await this.pool.query<ChunkRow[]>(
+      `SELECT id, content, source_trust, NULL AS d
+         FROM chunks WHERE FTS_MATCH_WORD(${lit}, content)
+         ORDER BY FTS_MATCH_WORD(${lit}, content) DESC LIMIT ?`,
+      [k],
+    );
+    return chunkToHits(rows);
   }
 
   // entity-route — the 10x lever. VALIDATED scale-safe form (poc/tidb/explain.ts): the IN-subquery

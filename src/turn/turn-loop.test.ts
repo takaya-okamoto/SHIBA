@@ -20,7 +20,12 @@ const fakeLlm = (over: Partial<LlmClient> = {}): LlmClient => ({
   ...over,
 });
 
-const noStore = (): MemoryWriter => ({ appendFacts: async () => {}, commit: async () => {} });
+const noStore = (): MemoryWriter => ({
+  appendFacts: async () => {},
+  readFacts: async () => [],
+  supersede: async () => 0,
+  commit: async () => {},
+});
 const hit = (claim: string, trust: "owner" | "untrusted"): SearchHit => ({
   id: "1",
   claim,
@@ -82,7 +87,10 @@ describe("TurnLoop.handleMessage", () => {
     expect(lastUser).toContain("[untrusted] 怪しい記憶");
     expect(lastUser).toContain("信頼できる記憶");
     expect(opts?.system).not.toContain("怪しい記憶");
-    expect(opts?.tools?.map((tool) => tool.name)).toContain("memory_search");
+    const toolNames = opts?.tools?.map((tool) => tool.name);
+    expect(toolNames).toContain("memory_search");
+    expect(toolNames).toContain("remember");
+    expect(toolNames).toContain("forget");
   });
 
   it("prepends recent history before the current message", async () => {
@@ -116,6 +124,8 @@ describe("TurnLoop.closeSession", () => {
       appendFacts: async (f) => {
         appended.push(...f);
       },
+      readFacts: async () => [],
+      supersede: async () => 0,
       commit: async () => {},
     };
     const reindex = vi.fn(async () => {});
@@ -131,5 +141,27 @@ describe("TurnLoop.closeSession", () => {
     expect(n).toBe(1);
     expect(appended).toHaveLength(1);
     expect(reindex).toHaveBeenCalledOnce();
+  });
+
+  it("clamps facts to untrusted when the transcript is forwarded (laundering defense, 98 §3.5)", async () => {
+    const appended: { sourceTrust: string }[] = [];
+    const store: MemoryWriter = {
+      appendFacts: async (f) => {
+        appended.push(...(f as unknown as { sourceTrust: string }[]));
+      },
+      readFacts: async () => [],
+      supersede: async () => 0,
+      commit: async () => {},
+    };
+    const t = new TurnLoop({
+      llm: fakeLlm(), // model claims source_trust: "owner"
+      search: async () => [],
+      allowlist: new InMemoryAllowlist(),
+      store,
+      reindex: async () => {},
+      ownerCode: "C",
+    });
+    await t.closeSession("転送された文章", "2026-06-13", "forwarded");
+    expect(appended[0]?.sourceTrust).toBe("untrusted"); // clamped despite the model saying owner
   });
 });

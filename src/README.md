@@ -22,13 +22,23 @@ published extension point (docs/90 §3-④, 92 §5). Imports use `.js` extension
 | `memory/fence.ts` | ✅ | facts fence parse/serialize (round-trip; strikethrough = forget) |
 | `memory/paths.ts` | ✅ | path-traversal guard + slug validation (98 §6) |
 | `session/session.ts` | ✅ | session boundary logic (idle / turn cap / daily reset) |
-| `llm/client.ts` | ✅ | `LlmClient` + AnthropicLlm (API) + BedrockLlm (AWS creds: SSO local / IMDS box). Bedrock model ids via env |
-| `extract/extract.ts` | ✅ | stage-1 extraction → facts + `source_trust` clamp (parse-validate; reconcile TODO) |
-| `extract/prompts.ts` | ✅ | extraction system prompt (ja; secret-not-value + source_trust rules) |
-| `turn/allowlist.ts` | ✅ | owner allowlist + one-time-code onboarding (in-memory; TiDB TODO) |
-| `turn/turn-loop.ts` | ✅ | handleMessage (allowlist→recall→respond) + closeSession (extract→fence→commit→reindex) |
-| `channels/telegram/adapter.ts` | ✅ thin | grammy long polling → TurnLoop (live-untested; verify on deploy) |
-| `main.ts` | ✅ | CLI: `serve` / `migrate` / `reindex` / `search "<q>"` |
+| `llm/client.ts` | ✅ | `LlmClient` + AnthropicLlm (API) + BedrockLlm (AWS creds: SSO local / IAM user keys on box — keyless not possible, ADR-0005). Bedrock model ids via env |
+| `extract/extract.ts` | ✅ | stage-1 extraction → harden input (sanitize/scrub/strip/detect) → facts + `source_trust` clamp + claim scrub (reconcile TODO) |
+| `extract/prompts.ts` | ✅ | extraction system prompt (ja; secret-not-value + source_trust + observation-date rules) |
+| `security/sanitize.ts` | ✅ | Unicode hygiene (zero-width/bidi/control strip, homoglyph normalize, ZWJ-safe) + `stripInjectedContext` (98 §2.3/§3.1) |
+| `security/redact.ts` | ✅ | secret/PII scrub for the memory path + always-on `redactForLog` (98 §4.2-4.3) |
+| `security/injection.ts` | ✅ | injection pattern detection, EN+JA (detect≠block; 98 §2.2) |
+| `extract/reconcile.ts` | ✅ | stage-2 reconcile (gather→ADD/UPDATE/DELETE/NOOP, integer-id mask, pinned guard, fail-open) |
+| `turn/allowlist.ts` | ✅ | owner allowlist + one-time-code onboarding (FileAllowlist persists) |
+| `turn/memory-tools.ts` | ✅ | in-turn `remember`/`forget` helpers (buildRememberFact / matchForget) |
+| `turn/commands.ts` | ✅ | owner command system (`/help /search /remember /forget /status /pause /resume /digest`) + PauseRegistry |
+| `turn/turn-loop.ts` | ✅ | handleMessage (allowlist→commands→recall→respond + remember/forget tools) + closeSession (extract→reconcile→supersede/append→commit→reindex) |
+| `channels/telegram/classify.ts` | ✅ | message classifier (text/caption/location/contact/sticker→text; image/audio/video=unsupported) + provenance |
+| `channels/telegram/adapter.ts` | ✅ thin | grammy long polling (all message types) → TurnLoop; skips commands/paused from recording |
+| `index/meta.ts` | ✅ | index identity gate (schema/embedding version; startup fail-closed on schema mismatch) |
+| `index/st.ts` | ✅ | st_* access (recall log / metrics / security events / update dedup; query-hash only) |
+| `session/persistence.ts` | ✅ | open-session persistence + recovery (survives restart) |
+| `main.ts` | ✅ | CLI: `serve` / `migrate` / `reindex` / `search "<q>"`; serve wires meta gate + sessions + commands |
 
 ## Run
 
@@ -41,14 +51,20 @@ pnpm migrate                    # create schema
 pnpm search "田中さんとの打ち合わせ"
 ```
 
-## Next (Step 3c)
+## Status
 
-Done in 3b: `llm/` (Anthropic), `extract/` (stage-1 + source_trust clamp), `turn/` (allowlist + loop),
-`channels/telegram` (grammy) — orchestration unit-tested (27 tests total), SDK wiring typechecked.
-Remaining (need live keys / deploy):
-- run live: `MODEL_PROVIDER=anthropic ANTHROPIC_API_KEY=… TELEGRAM_BOT_TOKEN=… pnpm serve`
-- session store + idle sweep to auto-fire `closeSession` (the "remember" trigger)
-- extract stage-2 reconcile (ADD/UPDATE/DELETE); Bedrock LLM client (`@anthropic-ai/bedrock-sdk` + IMDS)
-- recall boosts / rerank (101 §7); action gate (v2+)
+Memory loop is end-to-end and unit-tested (131 tests): talk → recall → reply → session-boundary
+extract → reconcile → Markdown+git → reindex; in-turn `remember`/`forget`; owner commands; ingest
+hardening (sanitize/scrub/injection-detect/`source_trust`); index identity gate + `st_*` state;
+session persistence; hybrid recall (facts + chunks, fail-open, LIKE fallback, entity ranker).
+
+DB-touching code (provider queries, migrate, reindex, `st`/`meta` writes) is typecheck-verified;
+final validation needs a live TiDB. Tracking of what's done vs deferred: research-side
+`docs/IMPLEMENTATION_BACKLOG.md` (Phases A–F).
+
+Deferred (need infra / an API decision): vision-OCR + voice-STT + SSRF guard (B3 tail); incremental
+reindex (D6); local embedding provider (D7); eval harness (E5); nightly Batches + budget guard (E6);
+structured-log/`/healthz` + write-queue circuit breaker (E3/E4 tail). v2+: external ingestion,
+actions, MCP.
 
 Index pipeline (with a TiDB `.env`): `MEMORY_DIR=./examples/memory pnpm migrate && MEMORY_DIR=./examples/memory pnpm reindex --all && pnpm search "田中さんとの打ち合わせ"`.

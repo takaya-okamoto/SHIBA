@@ -18,5 +18,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
-      - run: pnpm test
+      - run: pnpm test # includes the secret-redaction + sanitize/injection security tests (docs/98 §10)
       - run: pnpm build
+      # Dependency audit (docs/98 §8). Informational — surfaces advisories without blocking the build.
+      - run: pnpm audit --audit-level high
+        continue-on-error: true
+      # NOTE: the `reindex --all` rebuild invariant (DROP TiDB -> reindex restores) needs a live TiDB
+      # and isn't run here; `reindex.test.ts` covers the pure record-builder. Run it in a DB-backed job.

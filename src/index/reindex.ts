@@ -87,10 +87,16 @@ export async function reindex(opts: { all?: boolean } = {}): Promise<void> {
       await pool.query(`TRUNCATE TABLE ${t}`).catch(() => {}); // ignore if not migrated yet
     }
   }
+  // mention_count drives entity-resolution tie-breaks (docs/101 §5) — count references per slug.
+  const mentions = new Map<string, number>();
+  for (const f of rec.facts)
+    for (const slug of f.entitySlugs) {
+      mentions.set(slug, (mentions.get(slug) ?? 0) + 1);
+    }
   for (const [slug, id] of rec.entities) {
     await pool.query(
-      "INSERT INTO entities (id, slug, name) VALUES (?,?,?) ON DUPLICATE KEY UPDATE name = VALUES(name)",
-      [id, slug, slug], // TODO: real display name (currently slug); resolve in extract (101 §5)
+      "INSERT INTO entities (id, slug, name, mention_count) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE name = VALUES(name), mention_count = VALUES(mention_count)",
+      [id, slug, slug, mentions.get(slug) ?? 0], // TODO: real display name (currently slug); resolve in extract (101 §5)
     );
   }
   for (const c of rec.chunks) {

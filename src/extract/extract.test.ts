@@ -40,4 +40,8 @@ describe("parseExtractionOutput", () => {
     expect(parseExtractionOutput({ facts: "x" }, "owner")).toEqual([]);
     expect(parseExtractionOutput(null, "owner")).toEqual([]);
   });
+  it("scrubs secrets that leak into the model's claim output (98 §2.2/§4.2)", () => {
+    const raw = { facts: [{ claim: "APIキーは sk-abcdefghijklmnop1234", kind: "fact" }] };
+    expect(parseExtractionOutput(raw, "owner")[0]?.claim).toBe("APIキーは [REDACTED]");
+  });
 });

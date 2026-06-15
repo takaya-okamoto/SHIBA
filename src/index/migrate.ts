@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import "dotenv/config";
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
+import { SCHEMA_VERSION } from "./meta.js";
 
 /**
  * Apply schema.sql, injecting the embedding model/dim. Idempotent (CREATE TABLE IF NOT EXISTS).
@@ -55,6 +56,15 @@ export async function migrate(): Promise<void> {
       }
     }
   }
+  // Stamp the index identity so startup can detect a changed embedding model/dim (docs/94 A-3).
+  await conn.query(
+    `INSERT INTO meta (id, schema_version, embedding_provider, embedding_model, embedding_dim)
+     VALUES (1, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE schema_version = VALUES(schema_version),
+       embedding_provider = VALUES(embedding_provider), embedding_model = VALUES(embedding_model),
+       embedding_dim = VALUES(embedding_dim), updated_at = CURRENT_TIMESTAMP`,
+    [SCHEMA_VERSION, config.embedding.provider, config.embedding.model, config.embedding.dimension],
+  );
   await conn.end();
-  console.log("migrate: done.");
+  console.log(`migrate: done (schema v${SCHEMA_VERSION}).`);
 }

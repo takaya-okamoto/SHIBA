@@ -18,11 +18,18 @@ export interface Config {
     recencyHalfLifeDays: number;
     /** Toggle recency decay (evergreen kinds are always exempt). */
     decayEnabled: boolean;
+    /** Keyword route mode: TiDB full-text (default) or a LIKE substring fallback (docs/91 §2.1). */
+    ftsMode: "fts" | "like";
   };
   /** Morning digest schedule (docs/96 C-5). */
   digest: DigestPolicy;
   /** Nightly reconcile (dreaming) schedule. */
   dream: DreamPolicy;
+  /** Security knobs (docs/98). Log redaction is always-on and NOT configurable here (§4.3). */
+  security: {
+    /** Scrub PII (email/phone) from the memory-storage path. Hard secrets are always scrubbed (§4.2). */
+    scrubPii: boolean;
+  };
 }
 
 const defaults: Config = {
@@ -37,9 +44,11 @@ const defaults: Config = {
     limit: 20,
     recencyHalfLifeDays: 30,
     decayEnabled: true,
+    ftsMode: (process.env.FTS_MODE as "fts" | "like") ?? "fts",
   },
   digest: { enabled: true, hour: 8, quietStartHour: 22, quietEndHour: 7, tzOffsetMin: 540 },
   dream: { enabled: true, hour: 3, tzOffsetMin: 540 },
+  security: { scrubPii: true },
 };
 
 /** Load config.yaml (behavior) merged over defaults. Secrets stay in .env (docs/92 §3). */
@@ -51,6 +60,7 @@ export function loadConfig(path = "config.yaml"): Config {
     search: { ...defaults.search, ...y.search },
     digest: { ...defaults.digest, ...y.digest },
     dream: { ...defaults.dream, ...y.dream },
+    security: { ...defaults.security, ...y.security },
   };
 }
 

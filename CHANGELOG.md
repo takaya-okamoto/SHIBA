@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Ingest hardening (`src/security/`): Unicode sanitize (zero-width/bidi/control strip, angle-bracket
+  homoglyph normalize, ZWJ-safe) + injected-block stripping; secret/PII scrub (PEM/JWT/keys/Luhn
+  cards/email/phone) on the memory path; always-on log redaction; injection-pattern detection
+  (EN + JA, detect≠block). Wired into the extraction pipeline and the Telegram error log.
+- `source_trust` now actually fires: forwarded Telegram messages are classified `untrusted` and
+  extracted in a separate trust bucket, so other-people's text can't launder into trusted facts.
+- Observation-date anchoring in extraction (relative dates resolved against the receive date).
+- Extraction stage-2 reconcile (`src/extract/reconcile.ts`): ADD/UPDATE/DELETE/NOOP against related
+  existing facts (entity-gathered, integer-id-masked, pinned-file guard), non-destructive supersede
+  via Markdown strikethrough — replaces the ADD-only path.
+- In-turn `remember` / `forget` tools + an owner command system (`/help /search /remember /forget
+  /status /pause /resume /digest`); commands and paused users are never recorded as memory.
+- Multimodal message handling: location/venue/contact/sticker/caption become turn text; image/audio/
+  video reply gracefully (vision/STT deferred).
+- Index identity gate (`meta` table + startup check): refuses to start on a schema mismatch, warns on
+  embedding model/dim drift — stops a changed `EMBED_MODEL` from silently serving wrong-dim vectors.
+- State tables (`st_recall_log` / `st_update_dedup` / `st_metrics` / `st_feedback` /
+  `st_security_events`) + access layer; recall logging + daily metrics wired (`/status`).
+- Session persistence + recovery: open sessions survive a restart and still flush.
+- Search: chunk (prose-memo) routes added to recall; entity resolution upgraded to a confidence-gated
+  ranker (slug/name/alias + mention_count); fail-open per route + zero-hit FTS rescue; LIKE fallback
+  (`FTS_MODE=like`).
+- ADRs (`docs/adr/`) recording the load-bearing decisions; English `README.md` + `README.ja.md`.
 - Nightly dreaming (`DreamScheduler` + reconcile): once a day (default 03:00 JST) reviews active
   facts for contradictions/duplicates and stores short insights; the next morning's digest surfaces
   them ("🌙 ゆうべ気づいたこと"). NON-DESTRUCTIVE — it never edits facts; the owner decides what to do.
