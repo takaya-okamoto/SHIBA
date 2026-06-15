@@ -41,6 +41,14 @@ resource "aws_lightsail_instance" "shiba" {
     tidb_password          = var.tidb_password
     tidb_database          = var.tidb_database
   })
+
+  # user_data only runs at first boot and CANNOT be updated in place on Lightsail — a diff would
+  # otherwise force-replace the whole instance (destroying its on-disk source-of-truth + changing the
+  # IP). Ignore it so routine applies (e.g. a firewall/cidr change) never recreate the box. To
+  # intentionally re-bootstrap, run `terraform apply -replace=aws_lightsail_instance.shiba`. (ADR-0002.)
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 }
 
 # ===========================================================================
