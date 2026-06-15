@@ -57,7 +57,9 @@ const defaults: Config = {
   security: { scrubPii: true },
   streaming: {
     enabled: process.env.STREAMING !== "off",
-    throttleMs: Number(process.env.STREAM_THROTTLE_MS ?? 1000),
+    // 500ms ≈ 2 edits/sec: smoother than 1s without tripping Telegram's 429 (the stream also backs
+    // off on retry_after). Lower it via STREAM_THROTTLE_MS if you don't hit rate limits.
+    throttleMs: Number(process.env.STREAM_THROTTLE_MS ?? 500),
   },
 };
 

@@ -68,4 +68,38 @@ describe("createTelegramStream", () => {
     expect(sends).toEqual([]);
     expect(s.messageId()).toBeUndefined();
   });
+
+  it("backs off for retry_after after a Telegram 429, then resumes", async () => {
+    const sends: string[] = [];
+    const edits: { id: number; text: string }[] = [];
+    let editCalls = 0;
+    const transport: StreamTransport = {
+      send: async (t) => {
+        sends.push(t);
+        return 100;
+      },
+      edit: async (id, t) => {
+        editCalls += 1;
+        if (editCalls === 1) {
+          throw { error_code: 429, parameters: { retry_after: 3 } }; // first edit rate-limited
+        }
+        edits.push({ id, text: t });
+      },
+    };
+    const s = createTelegramStream(transport, { throttleMs: 500 });
+    s.update("one");
+    await vi.advanceTimersByTimeAsync(0); // initial send
+    expect(sends).toEqual(["one"]);
+
+    s.update("one two");
+    await vi.advanceTimersByTimeAsync(500); // edit attempt -> 429 -> cooldown 3s, nothing delivered
+    expect(edits).toEqual([]);
+
+    s.update("one two three");
+    await vi.advanceTimersByTimeAsync(500); // still within cooldown -> no edit yet
+    expect(edits).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(3000); // cooldown elapsed -> edit lands
+    expect(edits.at(-1)).toEqual({ id: 100, text: "one two three" });
+  });
 });

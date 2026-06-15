@@ -13,4 +13,4 @@ search:
 
 streaming:                  # Telegram live-preview: edit one message as the answer grows (openclaw #7123)
   enabled: true             # env STREAMING=off also disables
-  throttleMs: 1000          # min ms between edits (Telegram rate-limit guard; clamped to >=250)
+  throttleMs: 500           # ms between edits (smoothness vs Telegram 429; backs off on retry_after; >=250)
