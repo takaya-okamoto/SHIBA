@@ -111,7 +111,12 @@ function formatHits(hits: SearchHit[]): string {
 export class TurnLoop {
   constructor(private deps: TurnDeps) {}
 
-  async handleMessage(userId: string, text: string, history: LlmMessage[] = []): Promise<string> {
+  async handleMessage(
+    userId: string,
+    text: string,
+    history: LlmMessage[] = [],
+    onDelta?: (text: string) => void,
+  ): Promise<string> {
     if (!(await this.deps.allowlist.isAllowed(userId))) {
       return (await tryOnboard(this.deps.allowlist, userId, text, this.deps.ownerCode)).reply;
     }
@@ -132,6 +137,7 @@ export class TurnLoop {
       messages: [...history, userTurn],
       tools: [this.memorySearchTool(), this.rememberTool(), this.forgetTool()],
       maxToolRounds: 4,
+      onDelta, // stream the answer to the transport (Telegram edits a message) when provided
     });
   }
 

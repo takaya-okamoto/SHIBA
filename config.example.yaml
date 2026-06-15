@@ -10,3 +10,7 @@ search:
   candidatesPerRoute: 40    # top-K pulled per route (vector / fts / entity) before fusion
   rrfK: 60                  # RRF constant
   limit: 20                 # final results after autocut
+
+streaming:                  # Telegram live-preview: edit one message as the answer grows (openclaw #7123)
+  enabled: true             # env STREAMING=off also disables
+  throttleMs: 1000          # min ms between edits (Telegram rate-limit guard; clamped to >=250)

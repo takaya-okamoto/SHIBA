@@ -34,7 +34,8 @@ published extension point (docs/90 §3-④, 92 §5). Imports use `.js` extension
 | `turn/commands.ts` | ✅ | owner command system (`/help /search /remember /forget /status /pause /resume /digest`) + PauseRegistry |
 | `turn/turn-loop.ts` | ✅ | handleMessage (allowlist→commands→recall→respond + remember/forget tools) + closeSession (extract→reconcile→supersede/append→commit→reindex) |
 | `channels/telegram/classify.ts` | ✅ | message classifier (text/caption/location/contact/sticker→text; image/audio/video=unsupported) + provenance |
-| `channels/telegram/adapter.ts` | ✅ thin | grammy long polling (all message types) → TurnLoop; skips commands/paused from recording |
+| `channels/telegram/stream.ts` | ✅ | throttled send→edit streaming preview (openclaw #7123): one message, ≈1/s edits, 4096 cap, skip-unchanged |
+| `channels/telegram/adapter.ts` | ✅ thin | grammy long polling (all message types) → TurnLoop; streams the reply (edits one message); skips commands/paused from recording |
 | `index/meta.ts` | ✅ | index identity gate (schema/embedding version; startup fail-closed on schema mismatch) |
 | `index/st.ts` | ✅ | st_* access (recall log / metrics / security events / update dedup; query-hash only) |
 | `session/persistence.ts` | ✅ | open-session persistence + recovery (survives restart) |

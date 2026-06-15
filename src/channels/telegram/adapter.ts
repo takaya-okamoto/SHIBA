@@ -1,9 +1,11 @@
 import { Bot } from "grammy";
+import { config } from "../../config.js";
 import type { Notifier } from "../../digest/scheduler.js";
 import { redactForLog } from "../../security/redact.js";
 import type { SessionManager } from "../../session/manager.js";
 import type { TurnLoop } from "../../turn/turn-loop.js";
 import { classifyMessage, unsupportedReply } from "./classify.js";
+import { createTelegramStream } from "./stream.js";
 
 /** Handle returned by startTelegram: a Notifier for proactive sends + the polling promise. */
 export interface TelegramHandle {
@@ -44,8 +46,26 @@ export function startTelegram(
     const typing = setInterval(sendTyping, 5000);
     try {
       const history = sessions?.recentHistory(userId) ?? [];
-      const reply = await turn.handleMessage(userId, text, history);
-      await ctx.reply(reply);
+      // Stream the answer by editing one message as it grows (openclaw #7123). Commands / onboarding
+      // don't stream (no onDelta fires) — the stream stays empty and we fall back to a plain reply.
+      const chatId = ctx.chatId;
+      const stream =
+        config.streaming.enabled && chatId !== undefined
+          ? createTelegramStream(
+              {
+                send: (t) => ctx.reply(t).then((m) => m.message_id),
+                edit: (id, t) => bot.api.editMessageText(chatId, id, t).then(() => {}),
+              },
+              { throttleMs: config.streaming.throttleMs },
+            )
+          : undefined;
+      const reply = await turn.handleMessage(userId, text, history, (t) => stream?.update(t));
+      if (stream) {
+        await stream.finalize(reply);
+        if (stream.messageId() === undefined && reply) await ctx.reply(reply); // nothing streamed
+      } else {
+        await ctx.reply(reply);
+      }
       // Record the exchange AFTER replying so a boundary flush (extract/commit/reindex) never
       // delays the turn. Skip commands (not memory) and paused users (docs/96 C-2). Non-owners
       // (onboarding) are not recorded into a session/memory.

@@ -25,6 +25,12 @@ export interface RespondOptions {
   tools?: LlmTool[];
   /** Hard ceiling on tool round-trips (prevents an infinite tool loop). Default 4. */
   maxToolRounds?: number;
+  /**
+   * Streaming preview callback (docs: openclaw #7123). Called with the running text of the CURRENT
+   * assistant turn as it generates (reset per tool round, so the last round == the returned answer).
+   * The transport (Telegram) renders it via throttled edits. Optional — omit for a single final reply.
+   */
+  onDelta?: (text: string) => void;
 }
 
 export interface LlmClient {
@@ -39,11 +45,48 @@ export interface LlmModels {
   extract: string;
 }
 
-/** The one call we make. Both SDK clients (core + Bedrock) are wrapped to satisfy this in getLlm(). */
+/** Minimal shape of the SDK's streaming helper (both core + Bedrock expose `.on('text')`/`.finalMessage()`). */
+interface MessageStreamLike {
+  on(event: "text", cb: (delta: string) => void): MessageStreamLike;
+  finalMessage(): Promise<Anthropic.Message>;
+}
+
+/** The calls we make. Both SDK clients (core + Bedrock) are wrapped to satisfy this in getLlm(). */
 interface MessagesClient {
   messages: {
     create(body: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message>;
+    /** Optional — present for streaming previews; absent SDKs fall back to a single create(). */
+    stream?(body: Anthropic.MessageStreamParams): MessageStreamLike;
   };
+}
+
+/**
+ * One assistant round. With `onDelta` + streaming support, stream text deltas (the running round
+ * text) and reconstruct the full Message via finalMessage() so the tool loop still works. Falls back
+ * to a single create() if streaming is unavailable or errors (e.g. a provider quirk) — robustness
+ * over preview: the turn must never fail just because the live preview can't stream.
+ */
+async function runRound(
+  client: MessagesClient,
+  body: Anthropic.MessageCreateParamsNonStreaming,
+  onDelta?: (text: string) => void,
+): Promise<Anthropic.Message> {
+  if (onDelta && client.messages.stream) {
+    try {
+      let roundText = "";
+      const s = client.messages.stream(body as Anthropic.MessageStreamParams);
+      s.on("text", (delta) => {
+        roundText += delta;
+        onDelta(roundText);
+      });
+      return await s.finalMessage();
+    } catch {
+      // streaming unsupported / failed -> fall through to a single non-streamed request
+    }
+  }
+  const res = await client.messages.create(body);
+  if (onDelta) onDelta(textOf(res)); // non-streaming round still previews the final text once
+  return res;
 }
 
 /** Structural shape read from either SDK's non-streaming response. */
@@ -75,7 +118,7 @@ async function runToolLoop(
   model: string,
   opts: RespondOptions,
 ): Promise<string> {
-  const { system, messages, tools = [], maxToolRounds = 4 } = opts;
+  const { system, messages, tools = [], maxToolRounds = 4, onDelta } = opts;
   const byName = new Map(tools.map((t) => [t.name, t]));
   const systemBlocks: Anthropic.TextBlockParam[] = [
     { type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } },
@@ -89,13 +132,17 @@ async function runToolLoop(
   }));
 
   for (let round = 0; round <= maxToolRounds; round++) {
-    const res = await client.messages.create({
-      model,
-      max_tokens: 1024,
-      system: systemBlocks,
-      messages: convo,
-      ...(toolDefs ? { tools: toolDefs } : {}),
-    });
+    const res = await runRound(
+      client,
+      {
+        model,
+        max_tokens: 1024,
+        system: systemBlocks,
+        messages: convo,
+        ...(toolDefs ? { tools: toolDefs } : {}),
+      },
+      onDelta,
+    );
     if (process.env.LOG_LLM_USAGE && res.usage) {
       const u = res.usage;
       console.log(
@@ -184,7 +231,12 @@ export function getLlm(): LlmClient {
     }
     const bedrock = new AnthropicBedrock({ awsRegion: process.env.AWS_REGION ?? "ap-northeast-1" });
     return new LlmEngine(
-      { messages: { create: (b) => bedrock.messages.create(b) } },
+      {
+        messages: {
+          create: (b) => bedrock.messages.create(b),
+          stream: (b) => bedrock.messages.stream(b) as unknown as MessageStreamLike,
+        },
+      },
       {
         response,
         extract,
@@ -193,7 +245,12 @@ export function getLlm(): LlmClient {
   }
   const anthropic = new Anthropic();
   return new LlmEngine(
-    { messages: { create: (b) => anthropic.messages.create(b) } },
+    {
+      messages: {
+        create: (b) => anthropic.messages.create(b),
+        stream: (b) => anthropic.messages.stream(b) as unknown as MessageStreamLike,
+      },
+    },
     {
       response: process.env.RESPONSE_MODEL ?? "claude-sonnet-4-6",
       extract: process.env.EXTRACT_MODEL ?? "claude-haiku-4-5",
