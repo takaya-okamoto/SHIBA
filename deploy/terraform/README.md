@@ -66,6 +66,20 @@ remote backend (e.g. S3) over local state if anyone else can read your disk.
 `set -eu` (no `pipefail` / `[[ ]]` / arrays) and sets an apt `DPkg::Lock::Timeout` so first-boot
 unattended-upgrades holding the apt lock don't make the bootstrap fail.
 
+**E. `user_data` can't be updated in place — `ignore_changes` keeps a plain `apply` from recreating
+the box.** Lightsail can only set `user_data` at creation, so any diff would `force replacement` of
+the whole instance — destroying its on-disk source-of-truth (`data/memory`) and changing the IP. The
+instance therefore has `lifecycle { ignore_changes = [user_data] }`, so routine applies (e.g. a
+firewall/cidr change) are safe. **Always check `terraform plan` for "must be replaced" before applying
+to a live box.** To intentionally re-bootstrap, `terraform apply -replace=aws_lightsail_instance.shiba`.
+
+**F. Changing the SSH firewall on a *running* box — prefer the CLI.** To open SSH to a new IP without
+risk, change it out-of-band and skip `apply`:
+`aws lightsail put-instance-public-ports --instance-name <name> --port-infos '[{"fromPort":22,"toPort":22,"protocol":"tcp","cidrs":["A/32","B/32"]}]'`
+(`put` replaces the whole set, so list every port you want open = SSH only). Firewall changes take a
+few seconds to propagate (`nc -vz <ip> 22` to confirm before `ssh`). Then sync `admin_ssh_cidr` in
+tfvars so terraform and reality agree.
+
 ## Security notes
 
 - **No inbound app port.** `aws_lightsail_instance_public_ports` lists only SSH; ports 80/443
