@@ -70,7 +70,10 @@ unattended-upgrades holding the apt lock don't make the bootstrap fail.
 
 - **No inbound app port.** `aws_lightsail_instance_public_ports` lists only SSH; ports 80/443
   (open by default on Lightsail) are closed. Public attack surface = 0 with long polling.
-- Lock `admin_ssh_cidr` to your `/32`. Rotate the Telegram / Bedrock / TiDB credentials as passwords.
+- Lock `admin_ssh_cidr` to your `/32`(s). It's a **list**, so you can register multiple networks
+  (e.g. `["203.0.113.4/32", "198.51.100.7/32"]`) — home + office + phone. IPs are usually dynamic, so
+  re-apply when one changes (find the current one with `curl -4 ifconfig.me`). Rotate the Telegram /
+  Bedrock / TiDB credentials as passwords.
 - The memory git remote (`memory_git_remote`) should be a **private** repo.
 
 ## Teardown

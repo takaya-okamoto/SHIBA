@@ -55,6 +55,6 @@ resource "aws_lightsail_instance_public_ports" "shiba" {
     protocol  = "tcp"
     from_port = 22
     to_port   = 22
-    cidrs     = [var.admin_ssh_cidr]
+    cidrs     = var.admin_ssh_cidr
   }
 }

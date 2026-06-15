@@ -3,7 +3,7 @@
 
 # --- Access ---
 ssh_public_key = "ssh-ed25519 AAAA... you@host"   # contents of your *.pub
-admin_ssh_cidr = "203.0.113.4/32"                 # YOUR IP /32 (find: curl ifconfig.me)
+admin_ssh_cidr = ["203.0.113.4/32"]               # list — add more to allow multiple networks (find: curl -4 ifconfig.me)
 shiba_repo_url    = "https://github.com/takaya-okamoto/SHIBA.git"
 github_repo_token = ""   # fine-grained PAT (read-only Contents) for a PRIVATE repo. Empty if public.
 
