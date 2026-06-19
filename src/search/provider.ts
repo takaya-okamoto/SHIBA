@@ -91,12 +91,14 @@ export class TidbSearchProvider implements SearchProvider {
   }
 
   // text-route B — full-text. FTS_MATCH_WORD needs a constant -> inline + escape (98 §6).
-  // LIKE mode is the bound-param substring fallback (docs/91 §2.4-4).
+  // LIKE mode is the bound-param substring fallback (docs/91 §2.4-4): `likePattern` escapes %/_/\
+  // with a backslash, which is TiDB's default LIKE escape char — so no explicit ESCAPE clause is
+  // needed (an inline `ESCAPE '\'` was malformed SQL: the backslash escaped the closing quote).
   async ftsRoute(query: string, k: number): Promise<RouteHit[]> {
     if (this.likeMode) {
       const [rows] = await this.pool.query<FactRow[]>(
         `SELECT id, claim, source_trust, kind, recorded_at, NULL AS d
-           FROM facts WHERE state = 'active' AND claim LIKE ? ESCAPE '\\' LIMIT ?`,
+           FROM facts WHERE state = 'active' AND claim LIKE ? LIMIT ?`,
         [likePattern(query), k],
       );
       return toHits(rows);
@@ -128,7 +130,7 @@ export class TidbSearchProvider implements SearchProvider {
   async chunkFtsRoute(query: string, k: number): Promise<RouteHit[]> {
     if (this.likeMode) {
       const [rows] = await this.pool.query<ChunkRow[]>(
-        `SELECT id, content, source_trust, NULL AS d FROM chunks WHERE content LIKE ? ESCAPE '\\' LIMIT ?`,
+        "SELECT id, content, source_trust, NULL AS d FROM chunks WHERE content LIKE ? LIMIT ?",
         [likePattern(query), k],
       );
       return chunkToHits(rows);
