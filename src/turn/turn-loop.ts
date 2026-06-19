@@ -1,7 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.js";
 import { type Provenance, extractFacts } from "../extract/extract.js";
-import { reconcile } from "../extract/reconcile.js";
+import { type ReconcilePlan, reconcile } from "../extract/reconcile.js";
+import { summarizeTranscript } from "../extract/summarize.js";
 import type { LlmClient, LlmMessage, LlmTool } from "../llm/client.js";
 import type { FenceFact } from "../memory/fence.js";
 import type { StoredFact, SupersedeTarget } from "../memory/store.js";
@@ -15,6 +16,8 @@ export type SearchFn = (query: string) => Promise<SearchHit[]>;
 /** Minimal store surface the turn loop needs (FsGitMemoryStore satisfies it). */
 export interface MemoryWriter {
   appendFacts(facts: FenceFact[], date: string): Promise<void>;
+  /** Append a prose episodic note (conversation summary) — chunked into the recall route. */
+  appendNote(text: string, date: string): Promise<void>;
   readFacts(): Promise<StoredFact[]>;
   supersede(targets: SupersedeTarget[]): Promise<number>;
   commit(message: string): Promise<void>;
@@ -161,18 +164,32 @@ export class TurnLoop {
       observationDate: date,
       scrubPii: config.security.scrubPii,
     });
-    if (facts.length === 0) return 0;
+    // Episodic layer: a short prose summary keeps the narrative context the atomic facts can't carry
+    // (it gets chunked into the recall route). Owner-typed only — never turn forwarded/pasted
+    // (untrusted) prose into a searchable chunk, which has no per-row trust gate yet (docs/98 §3.5).
+    const summary =
+      provenance === "owner-typed"
+        ? await summarizeTranscript(transcript, this.deps.llm, {
+            observationDate: date,
+            scrubPii: config.security.scrubPii,
+          })
+        : "";
+    if (facts.length === 0 && !summary) return 0;
     // Stage 2 (docs/95 B-4): reconcile against existing memory so an update strikes the old fact
     // instead of piling on a contradictory duplicate (ADD-only is the anti-pattern, docs/90 §4).
-    const existing = await this.deps.store.readFacts();
-    const plan = await reconcile(facts, existing, this.deps.llm);
+    const existing = facts.length > 0 ? await this.deps.store.readFacts() : [];
+    const plan: ReconcilePlan =
+      facts.length > 0
+        ? await reconcile(facts, existing, this.deps.llm)
+        : { add: [], supersede: [] };
     if (plan.supersede.length > 0) {
       await this.deps.store.supersede(
         plan.supersede.map((f) => ({ relPath: f.relPath, claim: f.claim })),
       );
     }
     if (plan.add.length > 0) await this.deps.store.appendFacts(plan.add, date);
-    if (plan.add.length === 0 && plan.supersede.length === 0) return 0;
+    if (summary) await this.deps.store.appendNote(summary, date);
+    if (plan.add.length === 0 && plan.supersede.length === 0 && !summary) return 0;
     await this.deps.store.commit(`session ${date}`);
     await this.deps.reindex();
     return plan.add.length;

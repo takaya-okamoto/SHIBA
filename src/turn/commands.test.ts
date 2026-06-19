@@ -35,6 +35,7 @@ function deps(over: Partial<CommandDeps> = {}): {
   ];
   const store: MemoryWriter = {
     appendFacts: vi.fn(async () => {}),
+    appendNote: vi.fn(async () => {}),
     readFacts: vi.fn(async () => facts),
     supersede: vi.fn(async () => 1),
     commit: vi.fn(async () => {}),

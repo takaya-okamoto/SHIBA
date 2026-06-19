@@ -73,6 +73,17 @@ export class FsGitMemoryStore {
     await appendFile(abs, `\n\n${serializeFactsBlock(facts)}\n`, "utf8");
   }
 
+  /** Append a prose "conversation note" (episodic summary) under a dated heading. reindex chunks prose
+   *  (not fences) into the chunk recall route, so the narrative context the facts fence can't carry
+   *  stays searchable. No-op for empty text. */
+  async appendNote(text: string, date: string): Promise<void> {
+    const t = text.trim();
+    if (!t) return;
+    const abs = safeJoin(this.root, `memory/${date}.md`);
+    await mkdir(dirname(abs), { recursive: true });
+    await appendFile(abs, `\n\n## 会話メモ ${date}\n${t}\n`, "utf8");
+  }
+
   /** Every fact in the memory tree, tagged with its source file (for reconcile gather, docs/95 B-4). */
   async readFacts(): Promise<StoredFact[]> {
     const out: StoredFact[] = [];

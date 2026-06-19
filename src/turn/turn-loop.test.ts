@@ -22,6 +22,7 @@ const fakeLlm = (over: Partial<LlmClient> = {}): LlmClient => ({
 
 const noStore = (): MemoryWriter => ({
   appendFacts: async () => {},
+  appendNote: async () => {},
   readFacts: async () => [],
   supersede: async () => 0,
   commit: async () => {},
@@ -124,6 +125,7 @@ describe("TurnLoop.closeSession", () => {
       appendFacts: async (f) => {
         appended.push(...f);
       },
+      appendNote: async () => {},
       readFacts: async () => [],
       supersede: async () => 0,
       commit: async () => {},
@@ -149,6 +151,7 @@ describe("TurnLoop.closeSession", () => {
       appendFacts: async (f) => {
         appended.push(...(f as unknown as { sourceTrust: string }[]));
       },
+      appendNote: async () => {},
       readFacts: async () => [],
       supersede: async () => 0,
       commit: async () => {},
@@ -163,5 +166,60 @@ describe("TurnLoop.closeSession", () => {
     });
     await t.closeSession("転送された文章", "2026-06-13", "forwarded");
     expect(appended[0]?.sourceTrust).toBe("untrusted"); // clamped despite the model saying owner
+  });
+
+  it("writes an episodic prose summary (owner-typed) for the chunk recall route", async () => {
+    const notes: string[] = [];
+    const store: MemoryWriter = {
+      appendFacts: async () => {},
+      appendNote: async (text) => {
+        notes.push(text);
+      },
+      readFacts: async () => [],
+      supersede: async () => 0,
+      commit: async () => {},
+    };
+    const llm = fakeLlm({
+      // branch on the system prompt: summary call vs extraction call
+      json: async (system: string) =>
+        system.includes("会話メモ") ? { summary: "森社長と受託方針を相談した。" } : { facts: [] },
+    });
+    const t = new TurnLoop({
+      llm,
+      search: async () => [],
+      allowlist: new InMemoryAllowlist(),
+      store,
+      reindex: async () => {},
+      ownerCode: "C",
+    });
+    await t.closeSession("…会話…", "2026-06-19");
+    expect(notes).toEqual(["森社長と受託方針を相談した。"]);
+  });
+
+  it("does NOT summarize a forwarded (untrusted) transcript — no episodic-chunk laundering", async () => {
+    const notes: string[] = [];
+    const store: MemoryWriter = {
+      appendFacts: async () => {},
+      appendNote: async (text) => {
+        notes.push(text);
+      },
+      readFacts: async () => [],
+      supersede: async () => 0,
+      commit: async () => {},
+    };
+    const llm = fakeLlm({
+      json: async (system: string) =>
+        system.includes("会話メモ") ? { summary: "外部記事の要約" } : { facts: [] },
+    });
+    const t = new TurnLoop({
+      llm,
+      search: async () => [],
+      allowlist: new InMemoryAllowlist(),
+      store,
+      reindex: async () => {},
+      ownerCode: "C",
+    });
+    await t.closeSession("転送された記事", "2026-06-19", "forwarded");
+    expect(notes).toEqual([]); // summary skipped for non-owner provenance
   });
 });
