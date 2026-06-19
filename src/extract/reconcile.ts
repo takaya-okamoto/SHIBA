@@ -35,20 +35,58 @@ interface MaskedFact {
   fact: StoredFact;
 }
 
+/** Char-bigram set of a claim (whitespace-stripped) — a tokenizer-free similarity signal that works
+ *  for Japanese (no word boundaries). */
+function bigrams(claim: string): Set<string> {
+  const t = [...claim.replace(/\s+/g, "")];
+  const g = new Set<string>();
+  for (let i = 1; i < t.length; i++) g.add(`${t[i - 1] ?? ""}${t[i] ?? ""}`);
+  return g;
+}
+
+/** Overlap coefficient |A∩B| / min(|A|,|B|): robust when a short claim is subsumed by a longer one
+ *  (the same event re-stated with extra detail like an address). */
+function bigramOverlap(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const g of a) if (b.has(g)) inter++;
+  return inter / Math.min(a.size, b.size);
+}
+
+/** Gather threshold. Measured on real duplicates: same-event pairs scored 0.39–0.79, unrelated ≤0.11. */
+const SIM_THRESHOLD = 0.3;
+const MIN_CLAIM_LEN = 6; // below this, bigram overlap is too noisy to trust
+
 /**
- * Pure: existing ACTIVE facts that share an entity with any new fact (the cheap, precise signal).
- * Pinned-file facts are still gathered for context but guarded against supersede in the parser.
+ * Pure: existing ACTIVE facts related to any new fact — by shared entity slug (cheap, precise) OR by
+ * claim bigram-similarity. The similarity arm catches a re-stated duplicate whose entity slugs drifted
+ * between extractions (e.g. @mori-president vs @mori_president vs @morishima-shacho) — the entity-only
+ * gather missed those and let duplicates pile up (docs/95 B-4). Pinned-file facts are still gathered
+ * for context but guarded against supersede in the parser.
  */
 export function gatherRelated(newFacts: FenceFact[], existing: StoredFact[]): StoredFact[] {
   const wanted = new Set(
     newFacts.flatMap((f) => f.entities).filter((s) => !GENERIC_ENTITIES.has(s)),
   );
-  if (wanted.size === 0) return [];
-  const related = existing.filter(
-    (e) =>
-      e.state === "active" && e.entities.some((s) => !GENERIC_ENTITIES.has(s) && wanted.has(s)),
-  );
-  return related.slice(0, MAX_CANDIDATES);
+  const newGrams = newFacts
+    .filter((f) => f.claim.length >= MIN_CLAIM_LEN)
+    .map((f) => bigrams(f.claim));
+  const related: StoredFact[] = [];
+  for (const e of existing) {
+    if (e.state !== "active") continue;
+    const entityMatch =
+      wanted.size > 0 && e.entities.some((s) => !GENERIC_ENTITIES.has(s) && wanted.has(s));
+    let simMatch = false;
+    if (!entityMatch && e.claim.length >= MIN_CLAIM_LEN) {
+      const eg = bigrams(e.claim);
+      simMatch = newGrams.some((ng) => bigramOverlap(ng, eg) >= SIM_THRESHOLD);
+    }
+    if (entityMatch || simMatch) {
+      related.push(e);
+      if (related.length >= MAX_CANDIDATES) break;
+    }
+  }
+  return related;
 }
 
 export const RECONCILE_SYSTEM = `あなたは「新しい事実」と「既存の記憶」を突き合わせ、各既存記憶をどう扱うか判定する。出力は JSON のみ。

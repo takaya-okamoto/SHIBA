@@ -36,8 +36,36 @@ describe("gatherRelated", () => {
     expect(got.map((f) => f.claim)).toEqual(["コーヒーはブラックが好き"]); // shares coffee, active only
   });
 
-  it("returns nothing when the new facts have no entities", () => {
+  it("gathers nothing for short claims with no entity overlap", () => {
     expect(gatherRelated([fact("何か", [])], [stored("既存", ["x"], "a.md")])).toEqual([]);
+  });
+
+  it("gathers a re-stated duplicate even when entity slugs drift (bigram similarity)", () => {
+    // The real bug: the same dinner got extracted 3× with different slugs, so the entity-only gather
+    // never compared them. Similarity must bridge mori-president / mori_president / morishima-shacho.
+    const news = [
+      fact(
+        "森社長と東大教授が2026年7月1日19時に関わる会合がある",
+        ["mori_president", "todai_prof"],
+        {
+          kind: "event",
+        },
+      ),
+    ];
+    const existing = [
+      stored(
+        "7月1日19時から西麻布の鶫で森社長と東大教授との会食の予定がある",
+        ["mori-president", "tsugumi-restaurant"], // NOTE: zero slug overlap with the new fact
+        "memory/2026-06-18.md",
+        { kind: "event" },
+      ),
+      stored("名前は岡本隆也である", ["okamoto"], "memory/2026-06-14.md", { kind: "fact" }),
+    ];
+    const got = gatherRelated(news, existing);
+    // the dinner is gathered (via similarity); the unrelated name fact is not
+    expect(got.map((f) => f.claim)).toEqual([
+      "7月1日19時から西麻布の鶫で森社長と東大教授との会食の予定がある",
+    ]);
   });
 });
 
