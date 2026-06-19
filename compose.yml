@@ -6,6 +6,11 @@ services:
   app:
     build: .
     env_file: .env
+    # Container base image is UTC; without this, session.ts daily-reset (04:00) fires at 13:00 JST and
+    # daily-note dates skew up to 9h. digest/dream are offset-based (config tzOffsetMin) and unaffected.
+    # Override via TZ in .env for non-JST deployments.
+    environment:
+      - TZ=${TZ:-Asia/Tokyo}
     volumes:
       - ./data:/app/data                        # source of truth (Markdown+git) + local state
     restart: unless-stopped
