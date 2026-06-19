@@ -2,14 +2,7 @@ import { config } from "../config.js";
 import type { SearchHit, SearchOptions } from "../types.js";
 import { resolveEntities } from "./entity.js";
 import { type RouteHit, type SearchProvider, TidbSearchProvider } from "./provider.js";
-import {
-  type RankedList,
-  autocut,
-  demoteUntrusted,
-  recencyBoost,
-  rescueFromFts,
-  rrfFuse,
-} from "./rrf.js";
+import { type RankedList, autocut, demoteUntrusted, recencyBoost, rrfFuse } from "./rrf.js";
 
 /** Read = fail-open (docs/96 C-1): a failing route degrades to []; recall never throws on one bad route. */
 async function settle(label: string, p: Promise<RouteHit[]>): Promise<RouteHit[]> {
@@ -24,9 +17,10 @@ async function settle(label: string, p: Promise<RouteHit[]>): Promise<RouteHit[]
 /**
  * Hybrid recall (docs/91 §2.3, 101 §7): text-route (vector + FTS over facts AND chunks) + entity-
  * route, fused by RRF, untrusted demoted (98 §3.5), recency-decayed (90 §3), then autocut. Each route
- * is fail-open, so a degraded route (e.g. FTS preview erroring) still returns the others. If fusion
- * comes back empty but the keyword route matched, a rescue fallback surfaces those hits (openclaw
- * lesson). Stays at a handful of queries — no graph BFS, since connections are materialized at write.
+ * is fail-open, so a degraded route (e.g. FTS preview erroring) still returns the others. The
+ * openclaw "keyword-only hit dropped" failure is guarded directly in fusion — rrfFuse never drops a
+ * single-route hit (eval: keyword-only-hit-survives-fusion). Stays at a handful of queries — no
+ * graph BFS, since connections are materialized at write.
  */
 export async function search(
   query: string,
@@ -63,14 +57,8 @@ export async function search(
   fused = demoteUntrusted(fused);
   // recency decay: dated facts (event/commitment) fade with age; evergreen kinds are exempt (90 §3).
   if (config.search.decayEnabled) {
-    fused = recencyBoost(fused, Date.now(), config.search.recencyHalfLifeDays);
+    fused = recencyBoost(fused, opts.now ?? Date.now(), config.search.recencyHalfLifeDays);
   }
   // TODO (101 §7): graph-adjacency boost + cross-encoder rerank.
-  const result = autocut(fused, limit);
-  if (result.length === 0) {
-    // Final guard: if fusion is empty but the keyword route matched, surface those (openclaw lesson).
-    const rescue = rescueFromFts([...fts, ...chunkFts], limit);
-    if (rescue.length > 0) return rescue;
-  }
-  return result;
+  return autocut(fused, limit);
 }

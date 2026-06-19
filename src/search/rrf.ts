@@ -62,31 +62,6 @@ export function recencyBoost(hits: SearchHit[], nowMs: number, halfLifeDays: num
     .sort((a, b) => b.score - a.score);
 }
 
-/**
- * Zero-hit rescue (docs/91 §2.3, openclaw lesson): when fusion produced nothing usable but the
- * keyword route did match, return those raw FTS hits rather than "(no memory)". Dedups by id and
- * demotes untrusted. Pure — `ftsHits` are the raw RouteHits from the keyword route(s).
- */
-export function rescueFromFts(ftsHits: RouteHit[], limit: number): SearchHit[] {
-  const seen = new Set<string>();
-  const out: SearchHit[] = [];
-  for (const h of ftsHits) {
-    if (seen.has(h.id)) continue;
-    seen.add(h.id);
-    out.push({
-      id: h.id,
-      claim: h.claim,
-      sourceTrust: h.sourceTrust,
-      score: 1,
-      routes: ["fts"],
-      distance: h.distance,
-      recordedAt: h.recordedAt,
-      kind: h.kind,
-    });
-  }
-  return demoteUntrusted(out).slice(0, limit);
-}
-
 /** Autocut: keep the prefix before the largest score drop (gbrain-style; tune in eval). */
 export function autocut(hits: SearchHit[], limit: number): SearchHit[] {
   const top = hits.slice(0, limit);

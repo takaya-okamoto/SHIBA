@@ -146,11 +146,19 @@ async function main(): Promise<void> {
       }
       break;
     }
+    case "eval": {
+      // Offline search-regression harness (docs/95 B-1). No DB needed; exits non-zero on failure.
+      const { runAllFixtures, formatReport } = await import("./eval/runner.js");
+      const results = await runAllFixtures();
+      console.log(formatReport(results));
+      if (results.some((r) => !r.passed)) process.exitCode = 1;
+      break;
+    }
     case "serve":
       await serve(); // runs until killed; don't close the pool
       return;
     default:
-      console.log('commands: serve | migrate | reindex [--all] | search "<query>"');
+      console.log('commands: serve | migrate | reindex [--all] | search "<query>" | eval');
   }
   await closePool();
 }

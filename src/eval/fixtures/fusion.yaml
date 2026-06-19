@@ -1,0 +1,67 @@
+suite: fusion
+mode: routes
+# Routes mode: each case declares what every route returns; the harness runs the REAL search()
+# orchestration and asserts the fused/cut result. This is where the openclaw "BM25-only hit dropped"
+# math bug would reappear, so it is the faithful place to regress fusion. rrfK=60 (config default).
+cases:
+  - name: keyword-only-hit-survives-fusion
+    why: >
+      openclaw lesson (docs/91 §2.3): a fact found only by the keyword route must NOT be dropped when
+      the vector route misses it. v1 (vector-only) and k1 (keyword-only) both score 1/61 and both
+      survive — the regression guard for the keyword signal.
+    query: "abc保育園 お迎え"
+    routes:
+      vector:
+        - { id: "v1", claim: "好きな色は青" }
+      fts:
+        - { id: "k1", claim: "abc保育園のお迎えは18時まで" }
+    contains: ["k1"]
+    count: { min: 2 }
+
+  - name: multi-route-agreement-wins-and-autocut-trims-tail
+    why: >
+      A hit found by BOTH vector and keyword (a=2/61) outranks vector-only neighbours (b=1/62,
+      c=1/63). autocut keeps the prefix before the largest score gap (a→b = 0.0167, far bigger than
+      b→c = 0.0003), so only the clear winner survives.
+    query: "歯医者の予約"
+    routes:
+      vector:
+        - { id: "a", claim: "歯医者の予約は木曜10時" }
+        - { id: "b", claim: "歯ブラシを買い替えた" }
+        - { id: "c", claim: "歯磨き粉はミント味が好き" }
+      fts:
+        - { id: "a", claim: "歯医者の予約は木曜10時" }
+    topK: ["a"]
+
+  - name: untrusted-demoted-below-trusted
+    why: >
+      docs/98 §3.5 memory-laundering defense: an untrusted-origin hit is demoted (x0.5) so trusted
+      memory ranks first even when the untrusted hit had the better keyword rank (u=1/61 -> 0.0082 <
+      t=1/62 = 0.0161).
+    query: "在宅勤務の方針"
+    routes:
+      fts:
+        - { id: "u", claim: "全社で在宅勤務は禁止になった", trust: untrusted }
+        - { id: "t", claim: "私の部署は在宅勤務OK", trust: owner }
+    first: "t"
+    order: ["t", "u"]
+
+  - name: recency-decay-fades-old-event
+    why: >
+      docs/90 §3 temporal decay: dated kinds (event/commitment) fade with age. The older event was
+      keyword-rank #1 but decays to ~0.0004; the fresh event ranks first (~0.0158). Evergreen kinds
+      are exempt (tested implicitly elsewhere). `now` is pinned for determinism (docs/95 B-1).
+    query: "打ち合わせ"
+    now: "2026-06-15"
+    routes:
+      fts:
+        - { id: "old", claim: "1月の打ち合わせは新年会の相談", kind: event, recordedAt: "2026-01-01" }
+        - { id: "fresh", claim: "昨日の打ち合わせで予算が決まった", kind: event, recordedAt: "2026-06-14" }
+    first: "fresh"
+    order: ["fresh", "old"]
+
+  - name: all-routes-empty-yields-empty
+    why: "Empty in -> empty out: no route matched, so recall returns nothing (no spurious hits)."
+    query: "存在しない記憶"
+    topK: []
+    count: { max: 0 }

@@ -1,27 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FactKind, SearchHit } from "../types.js";
-import type { RouteHit } from "./provider.js";
-import {
-  type RankedList,
-  autocut,
-  demoteUntrusted,
-  recencyBoost,
-  rescueFromFts,
-  rrfFuse,
-} from "./rrf.js";
-
-describe("rescueFromFts", () => {
-  it("dedups by id, demotes untrusted, and caps to the limit", () => {
-    const fts: RouteHit[] = [
-      { id: "a", claim: "trusted", sourceTrust: "owner" },
-      { id: "a", claim: "dup", sourceTrust: "owner" },
-      { id: "b", claim: "untrusted", sourceTrust: "untrusted" },
-    ];
-    const out = rescueFromFts(fts, 5);
-    expect(out.map((h) => h.id)).toEqual(["a", "b"]); // dedup + trusted first
-    expect(rescueFromFts(fts, 1)).toHaveLength(1);
-  });
-});
+import { type RankedList, autocut, demoteUntrusted, recencyBoost, rrfFuse } from "./rrf.js";
 
 describe("rrfFuse", () => {
   it("rewards items that appear in multiple routes", () => {

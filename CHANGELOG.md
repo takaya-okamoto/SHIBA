@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Search-regression eval harness (`src/eval/`, `pnpm eval`): YAML fixtures replay through the real
+  `search()` with offline providers (no DB) to lock in recall behavior — fusion cases (keyword-only
+  hit survives, autocut, untrusted demotion, recency decay) and corpus/LIKE cases (CJK substring
+  recall, chunk id namespacing, entity route). Runs in CI via `regression.test.ts`. Adds an optional
+  `SearchOptions.now` so recency is deterministic under test.
 - Telegram message streaming (openclaw #7123): the reply now appears progressively by editing one
   message as it generates, instead of arriving all at once. The LLM client streams via the SDK's
   `.stream()`/`finalMessage()` (Anthropic + Bedrock), threaded through `onDelta`; the Telegram adapter
@@ -31,8 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `st_security_events`) + access layer; recall logging + daily metrics wired (`/status`).
 - Session persistence + recovery: open sessions survive a restart and still flush.
 - Search: chunk (prose-memo) routes added to recall; entity resolution upgraded to a confidence-gated
-  ranker (slug/name/alias + mention_count); fail-open per route + zero-hit FTS rescue; LIKE fallback
-  (`FTS_MODE=like`).
+  ranker (slug/name/alias + mention_count); fail-open per route; LIKE fallback (`FTS_MODE=like`).
 - ADRs (`docs/adr/`) recording the load-bearing decisions; English `README.md` + `README.ja.md`.
 - Nightly dreaming (`DreamScheduler` + reconcile): once a day (default 03:00 JST) reviews active
   facts for contradictions/duplicates and stores short insights; the next morning's digest surfaces

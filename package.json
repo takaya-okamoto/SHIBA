@@ -14,6 +14,7 @@
     "migrate": "tsx src/main.ts migrate",
     "reindex": "tsx src/main.ts reindex",
     "search": "tsx src/main.ts search",
+    "eval": "tsx src/main.ts eval",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check src",

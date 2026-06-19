@@ -1,0 +1,45 @@
+suite: like-recall
+mode: corpus
+# Corpus mode: keyword routes do real substring matching over this corpus (the LIKE fallback the doc
+# says CI must cover, docs/95 B-1); vector routes return [] (no offline embeddings), isolating the
+# keyword path. CJK substring recall works without tokenization — the property that makes LIKE a safe
+# retreat for Japanese (docs/91 §2.1). Engine-exact FTS/collation is left to the nightly DB run.
+corpus:
+  facts:
+    - { id: "f-gomi", claim: "毎週火曜は燃えるゴミの日", kind: commitment }
+    - { id: "f-coffee", claim: "コーヒーはブラックが好き", kind: preference }
+    - { id: "f-tokyo", claim: "東京の下町に住んでいる", kind: fact, entities: ["e-tokyo"] }
+  chunks:
+    - { id: "ch-kyoto", content: "京都旅行のmemo: 清水寺と伏見稲荷大社に行った" }
+cases:
+  - name: kanji-substring-recall
+    why: "CJK substring match (kanji+katakana) surfaces the right fact with no tokenizer."
+    query: "ゴミ"
+    contains: ["f-gomi"]
+    excludes: ["f-coffee", "f-tokyo"]
+
+  - name: katakana-substring-recall
+    why: "Katakana substring inside a longer claim still matches."
+    query: "ブラック"
+    contains: ["f-coffee"]
+
+  - name: chunk-route-and-namespacing
+    why: >
+      Prose chunks are searchable (docs/91 §2.2) and surface with the `c:` id namespace so they can't
+      collide with fact ids. Mixed romaji/kanji query.
+    query: "memo"
+    contains: ["c:ch-kyoto"]
+
+  - name: entity-route-surfaces-fact-keyword-missed
+    why: >
+      The entity route brings in a linked fact the keyword route never matched (query hits no claim),
+      proving the route runs only when entityIds are given (docs/101 §7).
+    query: "天気"
+    entityIds: ["e-tokyo"]
+    contains: ["f-tokyo"]
+
+  - name: no-match-yields-empty
+    why: "A query that matches no claim/content returns nothing (no spurious recall)."
+    query: "確定申告"
+    topK: []
+    count: { max: 0 }

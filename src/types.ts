@@ -48,4 +48,7 @@ export interface SearchOptions {
   limit?: number;
   /** Entity ids already resolved from the query (entity-route). */
   entityIds?: string[];
+  /** Pin "now" (epoch ms) for recency decay so eval / golden-conversation runs are deterministic
+   * (docs/95 B-1 time mock). Defaults to Date.now() in production. */
+  now?: number;
 }
