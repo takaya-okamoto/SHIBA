@@ -40,6 +40,15 @@ describe("buildDigest", () => {
     expect(t).toContain("7月1日 西麻布の鶫で会食(あと6日)");
   });
 
+  it("does not repeat the date when the claim already states it", () => {
+    const t = buildDigest({
+      today: "2026-06-25",
+      upcoming: [{ claim: "7月1日19時から西麻布の鶫で会食", date: "2026-07-01" }],
+    });
+    expect(t).toContain("・7月1日19時から西麻布の鶫で会食(あと6日)");
+    expect(t).not.toContain("7月1日 7月1日");
+  });
+
   it("appends the proactive note (no internal-maintenance framing)", () => {
     const t = buildDigest({ nudge: "会食まであと少し、手土産の準備はいい感じ?" });
     expect(t).toContain("会食まであと少し");

@@ -119,7 +119,10 @@ export function buildDigest(input: DigestInput): string | null {
         .map((u) => {
           const n = today ? daysAway(today, u.date) : 0;
           const when = n > 0 ? `(あと${n}日)` : "";
-          return `・${jpDate(u.date)} ${u.claim}${when}`;
+          // Skip the date prefix when the claim already states the date (avoids "7月1日 7月1日…").
+          const label = jpDate(u.date);
+          const prefix = u.claim.includes(label) ? "" : `${label} `;
+          return `・${prefix}${u.claim}${when}`;
         })
         .join("\n")}`,
     );
