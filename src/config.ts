@@ -53,7 +53,9 @@ const defaults: Config = {
     ftsMode: (process.env.FTS_MODE as "fts" | "like") ?? "fts",
   },
   digest: { enabled: true, hour: 8, quietStartHour: 22, quietEndHour: 7, tzOffsetMin: 540 },
-  dream: { enabled: true, hour: 3, tzOffsetMin: 540 },
+  // Nightly memory-maintenance "insights" were noisy + non-actionable in the digest (same dedup/stale
+  // notes re-surfaced daily, in internal-sounding wording). Off until repurposed to *act* silently.
+  dream: { enabled: false, hour: 3, tzOffsetMin: 540 },
   security: { scrubPii: true },
   streaming: {
     enabled: process.env.STREAMING !== "off",

@@ -114,7 +114,8 @@ async function serve(): Promise<void> {
       notifier,
       recipients: () => allowlist.list(),
       policy: config.digest,
-      insights: (today) => dream.insightsFor(today),
+      // Memory-maintenance "insights" are intentionally NOT surfaced to the owner (internal-sounding,
+      // repetitive). The morning digest carries only useful content (schedule; weather is added next).
     });
     const digestTimer = setInterval(() => {
       digest.tick().catch((e) => console.error("digest tick:", (e as Error).message));
