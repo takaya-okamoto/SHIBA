@@ -114,8 +114,9 @@ async function serve(): Promise<void> {
       notifier,
       recipients: () => allowlist.list(),
       policy: config.digest,
-      // Memory-maintenance "insights" are intentionally NOT surfaced to the owner (internal-sounding,
-      // repetitive). The morning digest carries only useful content (schedule; weather is added next).
+      weather: config.weather ?? undefined, // set WEATHER_LAT/LON/LABEL to enable
+      llm, // for the proactive "you might've missed this" note on quiet days
+      // Internal memory-maintenance "insights" are intentionally NOT surfaced to the owner.
     });
     const digestTimer = setInterval(() => {
       digest.tick().catch((e) => console.error("digest tick:", (e as Error).message));

@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import type { LlmClient } from "../llm/client.js";
 import { type DigestSource, buildDigest } from "./digest.js";
+import { proactiveNudge } from "./nudge.js";
+import { type WeatherLocation, fetchWeatherLine } from "./weather.js";
 
 export interface Notifier {
   notify(userId: string, text: string): Promise<void>;
@@ -47,8 +50,10 @@ export interface DigestSchedulerDeps {
   notifier: Notifier;
   recipients: () => Promise<string[]>;
   policy: DigestPolicy;
-  /** Optional nightly-dream insights for `today` (appended to the digest). */
-  insights?: (today: string) => Promise<string[]>;
+  /** Weather location (Open-Meteo). Omit to skip weather until the owner's location is configured. */
+  weather?: WeatherLocation;
+  /** LLM for the proactive "you might've missed this" note on otherwise-quiet days. */
+  llm?: LlmClient;
   statePath?: string;
   now?: () => number;
 }
@@ -69,11 +74,18 @@ export class DigestScheduler {
     const nowMs = this.now();
     if (!shouldSendDigest(nowMs, await this.lastSent(), this.deps.policy)) return;
     const today = localParts(nowMs, this.deps.policy.tzOffsetMin).date;
-    const due = await this.deps.source.commitmentsDueToday(today);
-    const overdue = await this.deps.source.commitmentsOverdue(today, 2);
-    const insights = this.deps.insights ? await this.deps.insights(today) : [];
+    const src = this.deps.source;
+    const dueToday = await src.scheduleDueToday(today);
+    const upcoming = await src.scheduleUpcoming(today, 7, 5);
+    const overdue = await src.commitmentsOverdue(today, 2);
+    const weather = this.deps.weather ? await fetchWeatherLine(this.deps.weather) : null;
+    // Proactive note only when the calendar is quiet — so it adds value, not noise.
+    let nudge = "";
+    if (dueToday.length === 0 && upcoming.length === 0 && this.deps.llm) {
+      nudge = await proactiveNudge(await src.recentFacts(40), this.deps.llm, today);
+    }
     await this.saveLastSent(today);
-    const text = buildDigest(due, overdue, insights);
+    const text = buildDigest({ today, weather, dueToday, upcoming, overdue, nudge });
     if (!text) return;
     for (const userId of await this.deps.recipients()) {
       await this.deps.notifier

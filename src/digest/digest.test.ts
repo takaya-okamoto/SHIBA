@@ -13,14 +13,37 @@ const at = (isoUtc: string) => Date.parse(isoUtc);
 
 describe("buildDigest", () => {
   it("returns null when there is nothing to report (silence principle)", () => {
-    expect(buildDigest([], [])).toBeNull();
+    expect(buildDigest({})).toBeNull();
   });
-  it("lists due and overdue commitments", () => {
-    const t = buildDigest(["歯医者 9時"], ["メール返信"]);
+
+  it("lists due and overdue items", () => {
+    const t = buildDigest({ dueToday: ["歯医者 9時"], overdue: ["メール返信"] });
+    expect(t).toContain("おはようございます");
     expect(t).toContain("今日の予定");
     expect(t).toContain("・歯医者 9時");
     expect(t).toContain("気になっている約束");
     expect(t).toContain("・メール返信");
+  });
+
+  it("includes weather when provided", () => {
+    const t = buildDigest({ weather: "東京: 雨 最高21℃ / 最低20℃ 降水100%" });
+    expect(t).toContain("今日の天気");
+    expect(t).toContain("東京: 雨");
+  });
+
+  it("shows upcoming items with a day countdown and JP date", () => {
+    const t = buildDigest({
+      today: "2026-06-25",
+      upcoming: [{ claim: "西麻布の鶫で会食", date: "2026-07-01" }],
+    });
+    expect(t).toContain("このあとの予定");
+    expect(t).toContain("7月1日 西麻布の鶫で会食(あと6日)");
+  });
+
+  it("appends the proactive note (no internal-maintenance framing)", () => {
+    const t = buildDigest({ nudge: "会食まであと少し、手土産の準備はいい感じ?" });
+    expect(t).toContain("会食まであと少し");
+    expect(t).not.toContain("ゆうべ気づいたこと");
   });
 });
 

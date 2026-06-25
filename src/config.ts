@@ -36,6 +36,15 @@ export interface Config {
     /** Minimum ms between edits (Telegram rate-limit guard; clamped to >=250). */
     throttleMs: number;
   };
+  /** Morning-digest weather location (Open-Meteo). null = no location set -> weather is skipped. */
+  weather: { lat: number; lon: number; label: string } | null;
+}
+
+function weatherFromEnv(): Config["weather"] {
+  const lat = Number(process.env.WEATHER_LAT);
+  const lon = Number(process.env.WEATHER_LON);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lat, lon, label: process.env.WEATHER_LABEL ?? "現在地" };
 }
 
 const defaults: Config = {
@@ -63,6 +72,7 @@ const defaults: Config = {
     // off on retry_after). Lower it via STREAM_THROTTLE_MS if you don't hit rate limits.
     throttleMs: Number(process.env.STREAM_THROTTLE_MS ?? 500),
   },
+  weather: weatherFromEnv(),
 };
 
 /** Load config.yaml (behavior) merged over defaults. Secrets stay in .env (docs/92 §3). */
@@ -76,6 +86,7 @@ export function loadConfig(path = "config.yaml"): Config {
     dream: { ...defaults.dream, ...y.dream },
     security: { ...defaults.security, ...y.security },
     streaming: { ...defaults.streaming, ...y.streaming },
+    weather: y.weather ?? defaults.weather,
   };
 }
 
