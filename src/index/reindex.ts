@@ -3,6 +3,12 @@ import { parseFacts } from "../memory/fence.js";
 import { FsGitMemoryStore, type SourceDoc } from "../memory/store.js";
 import { chunkMarkdown } from "./chunk.js";
 import { getPool } from "./db.js";
+import {
+  type EntityResolver,
+  buildResolver,
+  canonicalizeSlug,
+  loadAliasConfig,
+} from "./entity-resolve.js";
 
 export interface ChunkRecord {
   filePath: string;
@@ -18,31 +24,60 @@ export interface FactRecord {
   sourceTrust: string;
   validFrom: string | null;
   sourcePath: string;
-  entitySlugs: string[];
+  entitySlugs: string[]; // canonical slugs (post entity-resolution)
+}
+export interface EntityRecord {
+  id: number;
+  slug: string; // canonical
+  name: string;
+  kind: string;
+  aliases: string[]; // observed variant slugs that merged into this node
+  mentionCount: number;
+  lastSeen: string | null; // max valid_from among linked facts (YYYY-MM-DD)
 }
 export interface IndexRecords {
   chunks: ChunkRecord[];
   facts: FactRecord[];
-  entities: Map<string, number>; // slug -> app-assigned id
+  entities: Map<string, number>; // canonical slug -> app-assigned id
+  entityRecords: EntityRecord[];
 }
 
 /**
  * Pure: Markdown sources -> derived records (chunks/facts/entities/links). Fully testable without
  * TiDB. ids are app-assigned & stable within a full rebuild (avoids AUTO_RANDOM/JS precision —
  * poc/tidb lesson). Connections are materialized here at write time (101): facts carry entity slugs.
+ *
+ * `resolver` canonicalizes entity slugs (docs/101 §5): variant spellings collapse to one node, and
+ * the observed variants are recorded as `aliases`. Defaults to a format-only resolver.
  */
-export function buildIndexRecords(docs: SourceDoc[]): IndexRecords {
+export function buildIndexRecords(
+  docs: SourceDoc[],
+  resolver: EntityResolver = buildResolver(null),
+): IndexRecords {
   const chunks: ChunkRecord[] = [];
   const facts: FactRecord[] = [];
   const entities = new Map<string, number>();
+  const recs = new Map<string, EntityRecord & { aliasSet: Set<string> }>();
   let factId = 0;
   let entityId = 0;
-  const ensureEntity = (slug: string): number => {
-    const existing = entities.get(slug);
-    if (existing !== undefined) return existing;
+  const ensureEntity = (canon: string): EntityRecord & { aliasSet: Set<string> } => {
+    const existing = recs.get(canon);
+    if (existing) return existing;
     const id = ++entityId;
-    entities.set(slug, id);
-    return id;
+    entities.set(canon, id);
+    const m = resolver.meta(canon);
+    const rec = {
+      id,
+      slug: canon,
+      name: m.name,
+      kind: m.kind,
+      aliases: [] as string[],
+      aliasSet: new Set<string>(),
+      mentionCount: 0,
+      lastSeen: null as string | null,
+    };
+    recs.set(canon, rec);
+    return rec;
   };
 
   for (const doc of docs) {
@@ -55,7 +90,22 @@ export function buildIndexRecords(docs: SourceDoc[]): IndexRecords {
       });
     }
     for (const f of parseFacts(doc.content)) {
-      for (const slug of f.entities) ensureEntity(slug);
+      const resolved: string[] = [];
+      const seen = new Set<string>();
+      for (const raw of f.entities) {
+        const canon = resolver.resolve(raw);
+        if (!canon) continue;
+        const rec = ensureEntity(canon);
+        const normRaw = canonicalizeSlug(raw);
+        if (normRaw && normRaw !== canon) rec.aliasSet.add(normRaw); // remember the variant we merged
+        if (!seen.has(canon)) {
+          seen.add(canon);
+          resolved.push(canon);
+          rec.mentionCount++;
+          if (f.validFrom && (!rec.lastSeen || f.validFrom > rec.lastSeen))
+            rec.lastSeen = f.validFrom;
+        }
+      }
       facts.push({
         id: ++factId,
         claim: f.claim,
@@ -64,11 +114,20 @@ export function buildIndexRecords(docs: SourceDoc[]): IndexRecords {
         sourceTrust: f.sourceTrust,
         validFrom: f.validFrom,
         sourcePath: doc.relPath,
-        entitySlugs: f.entities,
+        entitySlugs: resolved,
       });
     }
   }
-  return { chunks, facts, entities };
+  const entityRecords: EntityRecord[] = [...recs.values()].map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    kind: r.kind,
+    aliases: [...r.aliasSet],
+    mentionCount: r.mentionCount,
+    lastSeen: r.lastSeen,
+  }));
+  return { chunks, facts, entities, entityRecords };
 }
 
 /**
@@ -86,22 +145,22 @@ export function buildIndexRecords(docs: SourceDoc[]): IndexRecords {
 export async function reindex(_opts: { all?: boolean } = {}): Promise<void> {
   const store = new FsGitMemoryStore();
   const docs = await store.readAll();
-  const rec = buildIndexRecords(docs);
+  const resolver = buildResolver(await loadAliasConfig(store.root));
+  const rec = buildIndexRecords(docs, resolver);
   const pool = getPool();
 
   for (const t of ["fact_entities", "facts", "chunks", "entities"]) {
     await pool.query(`TRUNCATE TABLE ${t}`).catch(() => {}); // ignore if not migrated yet
   }
-  // mention_count drives entity-resolution tie-breaks (docs/101 §5) — count references per slug.
-  const mentions = new Map<string, number>();
-  for (const f of rec.facts)
-    for (const slug of f.entitySlugs) {
-      mentions.set(slug, (mentions.get(slug) ?? 0) + 1);
-    }
-  for (const [slug, id] of rec.entities) {
+  // Entity nodes carry canonical slug + display name + kind + merged aliases + mention_count
+  // + last_seen (docs/101 §5). mention_count drives entity-resolution tie-breaks.
+  for (const e of rec.entityRecords) {
     await pool.query(
-      "INSERT INTO entities (id, slug, name, mention_count) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE name = VALUES(name), mention_count = VALUES(mention_count)",
-      [id, slug, slug, mentions.get(slug) ?? 0], // TODO: real display name (currently slug); resolve in extract (101 §5)
+      `INSERT INTO entities (id, slug, name, kind, aliases, mention_count, last_seen)
+       VALUES (?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE name=VALUES(name), kind=VALUES(kind), aliases=VALUES(aliases),
+         mention_count=VALUES(mention_count), last_seen=VALUES(last_seen)`,
+      [e.id, e.slug, e.name, e.kind, JSON.stringify(e.aliases), e.mentionCount, e.lastSeen],
     );
   }
   for (const c of rec.chunks) {

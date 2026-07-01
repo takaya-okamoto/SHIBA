@@ -1,3 +1,4 @@
+import { canonicalizeSlug } from "../index/entity-resolve.js";
 import type { LlmClient } from "../llm/client.js";
 import type { FenceFact } from "../memory/fence.js";
 import { detectInjection } from "../security/injection.js";
@@ -40,8 +41,13 @@ export function parseExtractionOutput(
         : "";
     const kind = o.kind as FactKind;
     if (!claim || !KINDS.has(kind)) continue;
+    // Format-normalize slugs at write time so new Markdown stops drifting (mori_president vs
+    // mori-president); semantic alias merges happen later at reindex (docs/101 §5).
     const entities = Array.isArray(o.entities)
-      ? o.entities.filter((e): e is string => typeof e === "string" && SLUG.test(e))
+      ? o.entities
+          .filter((e): e is string => typeof e === "string" && SLUG.test(e))
+          .map(canonicalizeSlug)
+          .filter(Boolean)
       : [];
     const validFrom =
       typeof o.valid_from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.valid_from)
