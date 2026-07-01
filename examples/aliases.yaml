@@ -1,0 +1,36 @@
+# Entity aliases (docs/101 §5). Copy to <MEMORY_DIR>/aliases.yaml (e.g. data/memory/aliases.yaml)
+# so it's versioned + backed up with your memory. Applied at every `reindex` — edit it, run
+# `pnpm reindex`, and split entity nodes collapse into one. Truth stays in Markdown; this only
+# controls how derived entity nodes are merged.
+#
+# Format normalization (lowercase, `_`->`-`) is automatic and needs NO entry here: `mori_president`
+# and `mori-president` already merge. List only *semantic* variants the spelling can't know
+# (nicknames, abbreviations, alternate readings/romanizations).
+entities:
+  - canonical: okamoto-takaya
+    name: 岡本隆也
+    kind: person
+    aliases: [owner, okayan, takayan, takka, taka]
+
+  - canonical: mori-president
+    name: 森社長
+    kind: person
+    aliases: [morishima-shacho]
+
+  - canonical: tsugumi-restaurant
+    name: 鶫
+    kind: place
+    aliases: [tuzura]
+
+  - canonical: todai-professor
+    name: 東大教授
+    kind: person
+    aliases: [tokyo-university-professor]
+
+  - canonical: startup-cto
+    name: 勤務先スタートアップ
+    kind: org
+
+  - canonical: app
+    name: 開発中のアプリ
+    kind: topic

@@ -36,7 +36,7 @@ export interface SupersedeTarget {
  * changes for durability. Writes (appendFact / forget) come with extract in Step 3b.
  */
 export class FsGitMemoryStore {
-  constructor(private root: string = process.env.MEMORY_DIR ?? "./data/memory") {}
+  constructor(readonly root: string = process.env.MEMORY_DIR ?? "./data/memory") {}
 
   /** All Markdown docs under the memory root (MEMORY.md, profile.md, memory/*.md). */
   async readAll(): Promise<SourceDoc[]> {
