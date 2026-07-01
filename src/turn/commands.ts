@@ -25,6 +25,8 @@ export const HELP_TEXT = `🐕 使えるコマンド
 /remember <こと> — いま覚える
 /forget <ことば> — その記憶を取り消す(あとで復元可)
 /status — 記憶の状態を見る
+/good — 直前の返答の思い出しが役立ったと伝える
+/bad — 直前の返答の思い出しがイマイチだったと伝える
 /pause — 自動で覚えるのを止める
 /resume — 自動で覚えるのを再開
 /digest — きょうのダイジェストを今すぐ`;
@@ -51,6 +53,10 @@ export interface CommandDeps {
   digest?: (userId: string) => Promise<string>;
   /** Optional: extra status line (e.g. today's metrics from st_metrics). */
   metrics?: () => Promise<string>;
+  /** Optional: record owner feedback (+1/-1) on the last recall (/good, /bad). Returns false if none. */
+  feedback?: (rating: 1 | -1) => Promise<boolean>;
+  /** Optional: recall-precision + feedback summary line for /status. */
+  recallStats?: () => Promise<string>;
 }
 
 function formatHits(hits: SearchHit[]): string {
@@ -119,7 +125,18 @@ export async function handleCommand(
         `・自動記憶: ${deps.pause.isPaused(userId) ? "停止中(/resume で再開)" : "オン"}`,
       ];
       if (deps.metrics) lines.push(await deps.metrics());
+      if (deps.recallStats) lines.push(await deps.recallStats());
       return lines.join("\n");
+    }
+
+    case "good":
+    case "bad": {
+      if (!deps.feedback) return "フィードバックはまだ準備中だよ。";
+      const ok = await deps.feedback(cmd === "good" ? 1 : -1);
+      if (!ok) return "まだ思い出したことが無いから、次の返答のあとに教えてね。";
+      return cmd === "good"
+        ? "ありがとう!役に立ったんだね。次も頑張る🐕"
+        : "ごめんね、覚えておくね。次はもっとうまく思い出す。";
     }
 
     case "digest":

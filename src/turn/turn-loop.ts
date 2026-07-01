@@ -9,6 +9,7 @@ import type { StoredFact, SupersedeTarget } from "../memory/store.js";
 import { toLocalDate } from "../session/session.js";
 import type { SearchHit } from "../types.js";
 import { type AllowlistStore, tryOnboard } from "./allowlist.js";
+import { attributeRecall } from "./attribution.js";
 import { buildRememberFact, matchForget, targetsOf } from "./memory-tools.js";
 
 export type SearchFn = (query: string) => Promise<SearchHit[]>;
@@ -33,6 +34,8 @@ export interface TurnDeps {
   persona?: string;
   /** Fire-and-forget recall logger (st_recall_log) — spaced-rep + eval input (docs/95 B-1). Optional. */
   onRecall?: (query: string, factIds: string[]) => void;
+  /** Fire-and-forget recall attribution: did the generated reply use the recalled memories (docs/95 B-1)? */
+  onAttribution?: (query: string, used: boolean) => void;
   /** Owner command router (docs/96 C-2). Returns a reply for `/`-commands, null for normal text. */
   commands?: (userId: string, text: string) => Promise<string | null>;
 }
@@ -135,13 +138,17 @@ export class TurnLoop {
     );
     // recall goes on the user turn (keeps system cacheable); history seeds short-term context.
     const userTurn: LlmMessage = { role: "user", content: text + this.recallBlock(hits) };
-    return this.deps.llm.respond({
+    const reply = await this.deps.llm.respond({
       system: this.buildSystem(),
       messages: [...history, userTurn],
       tools: [this.memorySearchTool(), this.rememberTool(), this.forgetTool()],
       maxToolRounds: 4,
       onDelta, // stream the answer to the transport (Telegram edits a message) when provided
     });
+    // Close the recall loop: attribute whether the reply actually used the injected memories. Only when
+    // something was recalled — no hits, nothing to attribute. Fire-and-forget; never delay the reply.
+    if (hits.length > 0) this.deps.onAttribution?.(text, attributeRecall(reply, hits));
+    return reply;
   }
 
   /** Is this user the registered owner? Only owner turns are recorded into a session/memory. */

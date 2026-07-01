@@ -10,7 +10,14 @@ import { closePool, getPool } from "./index/db.js";
 import { checkMeta } from "./index/meta.js";
 import { migrate } from "./index/migrate.js";
 import { reindex } from "./index/reindex.js";
-import { bumpMetric, readMetrics, recordRecall } from "./index/st.js";
+import {
+  bumpMetric,
+  markRecallUsed,
+  readMetrics,
+  readRecallStats,
+  recordFeedbackForLastRecall,
+  recordRecall,
+} from "./index/st.js";
 import { getLlm } from "./llm/client.js";
 import { FsGitMemoryStore } from "./memory/store.js";
 import { search } from "./search/index.js";
@@ -56,6 +63,20 @@ async function serve(): Promise<void> {
         return "";
       }
     },
+    // Owner feedback (/good, /bad) attributes to the last recall (single-user).
+    feedback: (rating) => recordFeedbackForLastRecall(getPool(), rating),
+    // Recall precision + feedback over the last 14 days (the loop that was blind before).
+    recallStats: async () => {
+      try {
+        const s = await readRecallStats(getPool());
+        if (s.attributed === 0 && s.up === 0 && s.down === 0) return "";
+        const rate = s.attributed ? Math.round((s.used / s.attributed) * 100) : 0;
+        const fb = s.up + s.down > 0 ? ` / 👍${s.up} 👎${s.down}` : "";
+        return `・想起の的中(14日): ${s.used}/${s.attributed} (${rate}%)${fb}`;
+      } catch {
+        return "";
+      }
+    },
   };
   const turn = new TurnLoop({
     llm,
@@ -71,6 +92,10 @@ async function serve(): Promise<void> {
       void recordRecall(pool, q, ids).catch(() => {});
       void bumpMetric(pool, day, "recalls").catch(() => {});
       void bumpMetric(pool, day, "turns").catch(() => {});
+    },
+    // Attribute recall precision once the reply is out (st_recall_log.used_in_reply was NULL forever).
+    onAttribution: (q, used) => {
+      void markRecallUsed(getPool(), q, used).catch(() => {});
     },
     commands: (userId, text) => handleCommand(userId, text, commandDeps),
   });
