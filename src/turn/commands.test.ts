@@ -99,7 +99,22 @@ describe("handleCommand", () => {
     expect(out).toContain("停止中");
   });
 
-  it("unknown command is rejected gracefully", async () => {
-    expect(await handleCommand("u", "/wat", deps().deps)).toContain("知らないコマンド");
+  it("/good and /bad record feedback with the right rating", async () => {
+    const feedback = vi.fn(async () => true);
+    const d = deps({ feedback }).deps;
+    expect(await handleCommand("u", "/good", d)).toContain("役に立った");
+    expect(feedback).toHaveBeenCalledWith(1);
+    expect(await handleCommand("u", "/bad", d)).toContain("ごめん");
+    expect(feedback).toHaveBeenCalledWith(-1);
+  });
+
+  it("/good tells the owner to wait when there's no recall yet", async () => {
+    const d = deps({ feedback: vi.fn(async () => false) }).deps;
+    expect(await handleCommand("u", "/good", d)).toContain("次の返答");
+  });
+
+  it("/status appends recall stats when available", async () => {
+    const d = deps({ recallStats: vi.fn(async () => "・想起の的中(14日): 3/4 (75%)") }).deps;
+    expect(await handleCommand("u", "/status", d)).toContain("的中");
   });
 });

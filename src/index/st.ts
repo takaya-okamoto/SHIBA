@@ -21,6 +21,60 @@ export async function recordRecall(pool: Pool, query: string, factIds: string[])
   ]);
 }
 
+/**
+ * Attribute a recall after the reply lands: set used_in_reply on the most recent row for this query
+ * (docs/95 B-1). The recall was logged with used_in_reply=NULL at recall time; this closes the loop so
+ * recall precision becomes measurable (it was NULL forever before). Fire-and-forget like recordRecall.
+ */
+export async function markRecallUsed(pool: Pool, query: string, used: boolean): Promise<void> {
+  await pool.query(
+    "UPDATE st_recall_log SET used_in_reply = ? WHERE query_hash = ? ORDER BY created_at DESC LIMIT 1",
+    [used ? 1 : 0, queryHash(query)],
+  );
+}
+
+/**
+ * Record owner feedback (+1/-1) against the most recent recall. Single-user system: the latest
+ * st_recall_log row IS the owner's last recall, so /good //bad need no per-user tracking. Returns
+ * false if there's no recall to attribute to.
+ */
+export async function recordFeedbackForLastRecall(pool: Pool, rating: 1 | -1): Promise<boolean> {
+  const [res] = await pool.query(
+    "INSERT INTO st_feedback (query_hash, rating) SELECT query_hash, ? FROM st_recall_log ORDER BY created_at DESC LIMIT 1",
+    [rating],
+  );
+  return ((res as { affectedRows?: number }).affectedRows ?? 0) > 0;
+}
+
+export interface RecallStats {
+  /** Recalls that have been attributed (used_in_reply not null) in the window. */
+  attributed: number;
+  /** ...of those, how many the reply actually used. */
+  used: number;
+  up: number;
+  down: number;
+}
+
+/** Recall-precision + feedback rollup over the last `days` (for /status). */
+export async function readRecallStats(pool: Pool, days = 14): Promise<RecallStats> {
+  const [r1] = await pool.query(
+    "SELECT COUNT(used_in_reply) AS attributed, COALESCE(SUM(used_in_reply=1),0) AS used FROM st_recall_log WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)",
+    [days],
+  );
+  const [r2] = await pool.query(
+    "SELECT COALESCE(SUM(rating=1),0) AS up, COALESCE(SUM(rating=-1),0) AS down FROM st_feedback WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)",
+    [days],
+  );
+  const a = (r1 as Array<Record<string, unknown>>)[0] ?? {};
+  const b = (r2 as Array<Record<string, unknown>>)[0] ?? {};
+  return {
+    attributed: Number(a.attributed ?? 0),
+    used: Number(a.used ?? 0),
+    up: Number(b.up ?? 0),
+    down: Number(b.down ?? 0),
+  };
+}
+
 /** Count a security event (injection detected / secret scrubbed / allowlist denied / rate limited). */
 export async function recordSecurityEvent(
   pool: Pool,
